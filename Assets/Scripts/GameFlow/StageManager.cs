@@ -22,6 +22,7 @@ public class StageManager : MonoBehaviour
     private Module1Ui ui;
     private StageGenerationConfig generationConfig;
     private readonly List<Portal> activePortals = new List<Portal>();
+    private readonly List<StageType> pendingPortalChoices = new List<StageType>();
     private bool isAwaitingPortalChoice;
 
     private void OnEnable()
@@ -71,6 +72,7 @@ public class StageManager : MonoBehaviour
         ApplyRunDataToPlayer(runManager.Data);
         ui.UpdateStageHud(runManager.Data.currentRoundIndex, runManager.Data.currentStageType);
         ui.ShowStageMessage(string.Empty);
+        PrepareHiddenPortalSlots();
 
         if (runManager.Data.currentStageType == StageType.Shop)
         {
@@ -187,7 +189,7 @@ public class StageManager : MonoBehaviour
         runManager.SavePlayerState(player);
         runManager.SaveRun();
         ui.HideShop();
-        SpawnPortalChoices();
+        RevealPortalChoices();
     }
 
     public string GetUpgradeLabel(ShopUpgradeType upgrade)
@@ -217,18 +219,46 @@ public class StageManager : MonoBehaviour
             enemySpawner.enabled = false;
         }
 
-        SpawnPortalChoices();
+        RevealPortalChoices();
     }
 
-    private void SpawnPortalChoices()
+    /// <summary>
+    /// Resolves the next-stage choices when the current stage begins, but only
+    /// displays empty, disabled frames. Their destinations remain concealed
+    /// until RevealPortalChoices is called.
+    /// </summary>
+    private void PrepareHiddenPortalSlots()
     {
-        if (isAwaitingPortalChoice)
+        pendingPortalChoices.Clear();
+        pendingPortalChoices.AddRange(GetPortalChoices());
+        if (pendingPortalChoices.Count == 0)
         {
             return;
         }
 
-        List<StageType> choices = GetPortalChoices();
-        if (choices.Count == 0)
+        Vector2 center = MapBoundary.Instance != null
+            ? MapBoundary.Instance.GetCenter()
+            : Vector2.zero;
+
+        for (int i = 0; i < pendingPortalChoices.Count; i++)
+        {
+            Vector2 portalPosition = GetPortalSlotPosition(center, i, pendingPortalChoices.Count);
+            if (MapBoundary.Instance != null)
+            {
+                portalPosition = MapBoundary.Instance.ClampPosition(portalPosition, PortalBoundaryPadding);
+            }
+
+            Portal portal = Portal.CreateHidden(
+                pendingPortalChoices[i],
+                portalPosition,
+                this);
+            activePortals.Add(portal);
+        }
+    }
+
+    private void RevealPortalChoices()
+    {
+        if (isAwaitingPortalChoice || activePortals.Count == 0)
         {
             return;
         }
@@ -236,25 +266,27 @@ public class StageManager : MonoBehaviour
         isAwaitingPortalChoice = true;
         ui.ShowStageMessage("Choose your next portal");
 
-        Vector2[] directions =
+        foreach (Portal portal in activePortals)
         {
-            Vector2.up,
-            new Vector2(-0.866f, -0.5f),
-            new Vector2(0.866f, -0.5f)
-        };
-
-        Vector2 origin = player != null ? player.transform.position : Vector2.zero;
-        for (int i = 0; i < choices.Count; i++)
-        {
-            Vector2 portalPosition = origin + directions[i] * 4.5f;
-            if (MapBoundary.Instance != null)
+            if (portal != null)
             {
-                portalPosition = MapBoundary.Instance.ClampPosition(portalPosition, PortalBoundaryPadding);
+                portal.Reveal();
             }
-
-            Portal portal = Portal.Create(choices[i], portalPosition, this);
-            activePortals.Add(portal);
         }
+    }
+
+    private static Vector2 GetPortalSlotPosition(Vector2 center, int index, int portalCount)
+    {
+        const float verticalOffset = 3.5f;
+        const float horizontalOffset = 3.25f;
+
+        if (portalCount <= 1)
+        {
+            return center + Vector2.up * verticalOffset;
+        }
+
+        float xOffset = index == 0 ? -horizontalOffset : horizontalOffset;
+        return center + new Vector2(xOffset, verticalOffset);
     }
 
     private List<StageType> GetPortalChoices()
@@ -373,6 +405,7 @@ public class StageManager : MonoBehaviour
         }
 
         activePortals.Clear();
+        pendingPortalChoices.Clear();
     }
 
     private void SetPortalsInteractable(bool interactable)
