@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class PlayerStats : MonoBehaviour
 {
@@ -36,7 +35,7 @@ public class PlayerStats : MonoBehaviour
     readonly List<WeaponController> suspendedWeaponControllers = new List<WeaponController>();
 
     [Header("UI")]
-    public Slider healthBar;
+    [SerializeField] private HealthUIDisplay healthUIDisplay;
 
     private void Awake()
     {
@@ -47,6 +46,8 @@ public class PlayerStats : MonoBehaviour
 
         playerSprite = GetComponent<SpriteRenderer>();
 
+        // Initialize health UI display
+        InitializeHealthUI();
         UpdateHealthBar();
 
         currentRecovery = characterData.Recovery;
@@ -137,6 +138,12 @@ public class PlayerStats : MonoBehaviour
         UpdateHealthBar();
         RunManager.Instance?.SavePlayerState(this);
 
+        // Show damage popup
+        if (healthUIDisplay != null)
+        {
+            healthUIDisplay.ShowDamagePopup(damage, transform.position);
+        }
+
         if (currentHealth <= 0)
         {
             Die();
@@ -155,6 +162,12 @@ public class PlayerStats : MonoBehaviour
 
         UpdateHealthBar();
         RunManager.Instance?.SavePlayerState(this);
+
+        // Show healing popup
+        if (healthUIDisplay != null && amount >= 5f)
+        {
+            healthUIDisplay.ShowHealingPopup(amount, transform.position);
+        }
     }
 
     public void ApplyRunData(RunData runData)
@@ -165,7 +178,7 @@ public class PlayerStats : MonoBehaviour
         }
 
         maxHealth = BaseMaxHealth + runData.maxHealthBonus;
-        currentHealth = Mathf.Clamp(runData.savedPlayerHealth, 0f, maxHealth);
+        currentHealth = runData.isNewRun ? maxHealth : Mathf.Min(runData.savedPlayerHealth, maxHealth);
         UpdateHealthBar();
     }
 
@@ -210,9 +223,23 @@ public class PlayerStats : MonoBehaviour
 
     void UpdateHealthBar()
     {
-        if (healthBar != null)
+        if (healthUIDisplay != null)
         {
-            healthBar.value = currentHealth / maxHealth;
+            healthUIDisplay.UpdateDisplay(currentHealth, maxHealth);
+        }
+    }
+
+    private void InitializeHealthUI()
+    {
+        if (healthUIDisplay == null)
+        {
+            healthUIDisplay = FindAnyObjectByType<HealthUIDisplay>();
+        }
+
+        if (healthUIDisplay == null)
+        {
+            Debug.LogWarning("PlayerStats: No HealthUIDisplay found. Assign the new HealthUIDisplay in the Player inspector.");
+            return;
         }
     }
 

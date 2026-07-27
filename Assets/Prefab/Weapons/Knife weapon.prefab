@@ -123,7 +123,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::KnifeBehavior
   weaponData: {fileID: 11400000, guid: 0e823384653772b4bb7e59a7f3ad2605, type: 2}
   destroyAfterSeconds: 1
-  visualRotationOffset: 0
+  visualRotationOffset: -45
 --- !u!60 &6194957966663204385
 PolygonCollider2D:
   m_ObjectHideFlags: 0

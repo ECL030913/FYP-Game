@@ -8,6 +8,14 @@ public class EnemyStats : MonoBehaviour, IPoolable
     float currentHealth;
     float currentDamage;
 
+    [Header("Hit Feedback")]
+    [SerializeField] private float hitFlashDuration = 0.15f;
+    [SerializeField] private float hitFlashRate = 24f;
+
+    SpriteRenderer enemySprite;
+    float hitFlashTimer;
+    bool isHitFlashing;
+
     private void Awake()
     {
         ResetRuntimeStats();
@@ -16,11 +24,20 @@ public class EnemyStats : MonoBehaviour, IPoolable
         {
             gameObject.AddComponent<EnemyAI>();
         }
+
+        enemySprite = GetComponent<SpriteRenderer>();
+
+    }
+    void Update()
+    {
+        HandleHitFeedback();
     }
 
     public void TakeDamage(float dmg)
     {
         currentHealth -= dmg;
+
+        PlayHitFeedback();
 
         if (currentHealth <= 0)
         {
@@ -56,6 +73,7 @@ public class EnemyStats : MonoBehaviour, IPoolable
         }
     }*/
 
+
     public void OnCollisionStay2D(Collision2D col)
     {
         if (col.gameObject.CompareTag("Player"))
@@ -85,11 +103,13 @@ public class EnemyStats : MonoBehaviour, IPoolable
     public void OnGetFromPool()
     {
         ResetRuntimeStats();
+        ResetHitFeedback();
     }
 
     public void OnReturnToPool()
     {
         ResetRuntimeStats();
+        ResetHitFeedback();
     }
 
     public void ApplyStageMultipliers(float healthMultiplier, float damageMultiplier)
@@ -116,4 +136,51 @@ public class EnemyStats : MonoBehaviour, IPoolable
         currentDamage = enemyData.Damage;
     }
 
+    void PlayHitFeedback()
+    {
+        if (enemySprite == null)
+        {
+            return;
+        }
+
+        hitFlashTimer = hitFlashDuration;
+        isHitFlashing = true;
+    }
+
+    void HandleHitFeedback()
+    {
+        if (!isHitFlashing)
+        {
+            return;
+        }
+
+        hitFlashTimer -= Time.deltaTime;
+
+        if (hitFlashTimer <= 0f)
+        {
+            isHitFlashing = false;
+
+            if (enemySprite != null)
+            {
+                enemySprite.enabled = true;
+            }
+
+            return;
+        }
+
+        if (enemySprite != null)
+        {
+            enemySprite.enabled = Mathf.FloorToInt(hitFlashTimer * hitFlashRate) % 2 == 0;
+        }
+    }
+    void ResetHitFeedback()
+    {
+        isHitFlashing = false;
+        hitFlashTimer = 0f;
+
+        if (enemySprite != null)
+        {
+            enemySprite.enabled = true;
+        }
+    }
 }

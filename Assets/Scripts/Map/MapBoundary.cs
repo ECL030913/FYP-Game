@@ -11,6 +11,14 @@ public class MapBoundary : MonoBehaviour
     {
         Instance = this;
         boundaryCollider = GetComponent<BoxCollider2D>();
+
+        if (boundaryCollider == null)
+        {
+            Debug.LogError("MapBoundary needs a BoxCollider2D.");
+            enabled = false;
+            return;
+        }
+
         bounds = boundaryCollider.bounds;
     }
 
@@ -19,6 +27,8 @@ public class MapBoundary : MonoBehaviour
         // A boundary smaller than the requested padding cannot represent a
         // playable area. Returning a clamped value in that case would collapse
         // all positions to one point, so leave the caller's position alone.
+        Bounds b = boundaryCollider.bounds;
+
         if (!CanContainPadding(padding))
         {
             return position;
@@ -52,5 +62,9 @@ public class MapBoundary : MonoBehaviour
     {
         float safePadding = Mathf.Max(0f, padding);
         return bounds.size.x > safePadding * 2f && bounds.size.y > safePadding * 2f;
+    }
+    public Bounds GetBounds()
+    {
+        return boundaryCollider.bounds;
     }
 }

@@ -12,6 +12,7 @@ public class RunManager : MonoBehaviour
     private class RunSaveData
     {
         public int currentStageIndex;
+        public int currentRoundIndex;
         public int currentStageType;
         public int eliteStagesCompleted;
         public int nonEliteStagesSinceLastElite;
@@ -118,6 +119,8 @@ public class RunManager : MonoBehaviour
 
     public void PrepareNextStage(StageType nextStageType, PlayerStats player)
     {
+        Data.isNewRun = false;
+
         if (player != null)
         {
             player.Heal(player.maxHealth * 0.2f);
@@ -125,6 +128,11 @@ public class RunManager : MonoBehaviour
         }
 
         Data.currentStageIndex++;
+        if (nextStageType == StageType.Combat || nextStageType == StageType.Elite)
+        {
+            Data.currentRoundIndex++;
+        }
+
         Data.currentStageType = nextStageType;
 
         if (nextStageType == StageType.Elite)
@@ -150,6 +158,7 @@ public class RunManager : MonoBehaviour
         RunSaveData save = new RunSaveData
         {
             currentStageIndex = Data.currentStageIndex,
+            currentRoundIndex = Data.currentRoundIndex,
             currentStageType = (int)Data.currentStageType,
             eliteStagesCompleted = Data.eliteStagesCompleted,
             nonEliteStagesSinceLastElite = Data.nonEliteStagesSinceLastElite,
@@ -188,10 +197,18 @@ public class RunManager : MonoBehaviour
                 return;
             }
 
-            Data.currentStageIndex = Mathf.Max(1, save.currentStageIndex);
             Data.currentStageType = Enum.IsDefined(typeof(StageType), save.currentStageType)
                 ? (StageType)save.currentStageType
                 : StageType.Combat;
+            Data.currentStageIndex = Mathf.Max(1, save.currentStageIndex);
+            Data.currentRoundIndex = Mathf.Max(1, save.currentRoundIndex);
+            if (save.currentRoundIndex <= 0)
+            {
+                Data.currentRoundIndex = Data.currentStageType == StageType.Shop
+                    ? Mathf.Max(1, Data.currentStageIndex - 1)
+                    : Data.currentStageIndex;
+            }
+
             Data.eliteStagesCompleted = Mathf.Max(0, save.eliteStagesCompleted);
             if (Data.currentStageType == StageType.Elite && Data.eliteStagesCompleted == 0)
             {

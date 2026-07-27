@@ -5,12 +5,14 @@ public class RunData : ScriptableObject
 {
     [Header("Progress")]
     public int currentStageIndex = 1;
+    public int currentRoundIndex = 1;
     public StageType currentStageType = StageType.Combat;
     public int eliteStagesCompleted;
     public int nonEliteStagesSinceLastElite;
 
     [Header("Player State")]
     public float savedPlayerHealth;
+    public bool isNewRun;
     public float maxHealthBonus;
     public float moveSpeedBonus;
     public float weaponDamageMultiplier = 1f;
@@ -20,10 +22,12 @@ public class RunData : ScriptableObject
     public void ResetForNewRun(float startingHealth)
     {
         currentStageIndex = 1;
+        currentRoundIndex = 1;
         currentStageType = StageType.Combat;
         eliteStagesCompleted = 0;
         nonEliteStagesSinceLastElite = 0;
         savedPlayerHealth = startingHealth;
+        isNewRun = true;
         maxHealthBonus = 0f;
         moveSpeedBonus = 0f;
         weaponDamageMultiplier = 1f;

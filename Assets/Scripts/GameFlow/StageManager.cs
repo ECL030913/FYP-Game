@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Module 1's procedural director. It listens for a combat wave to finish,
@@ -49,7 +50,10 @@ public class StageManager : MonoBehaviour
             enemySpawner.enabled = false;
         }
 
-        ui.ShowRunMenu(runManager.HasSavedRun);
+        // The dedicated Menu scene now owns New Game and Continue. If Game is
+        // opened directly without a prepared run, return to the real menu
+        // instead of showing the old runtime placeholder.
+        SceneManager.LoadScene("Menu");
     }
 
     public void BeginCurrentStage()
@@ -65,7 +69,8 @@ public class StageManager : MonoBehaviour
         isAwaitingPortalChoice = false;
         ui.HideAllPanels();
         ApplyRunDataToPlayer(runManager.Data);
-        ui.UpdateStageHud(runManager.Data.currentStageIndex, runManager.Data.currentStageType);
+        ui.UpdateStageHud(runManager.Data.currentRoundIndex, runManager.Data.currentStageType);
+        ui.ShowStageMessage(string.Empty);
 
         if (runManager.Data.currentStageType == StageType.Shop)
         {
@@ -76,9 +81,8 @@ public class StageManager : MonoBehaviour
         }
 
         GameEvents.ResetGlobalAggro();
-        enemySpawner.ConfigureStage(runManager.Data.currentStageType, runManager.Data.currentStageIndex);
+        enemySpawner.ConfigureStage(runManager.Data.currentStageType, runManager.Data.currentRoundIndex);
         enemySpawner.enabled = true;
-        ui.ShowStageMessage($"Stage {runManager.Data.currentStageIndex}: {runManager.Data.currentStageType}");
     }
 
     public void SelectPortal(StageType selectedStageType)

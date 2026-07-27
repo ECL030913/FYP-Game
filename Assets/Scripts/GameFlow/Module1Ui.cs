@@ -11,11 +11,14 @@ using UnityEngine.UI;
 public class Module1Ui : MonoBehaviour
 {
     private Font font;
-    private Text stageText;
+    private Text roundText;
     private Text messageText;
-    private GameObject runMenuPanel;
     private GameObject shopPanel;
     private GameObject deathPanel;
+    private GameObject healthBarContainer;
+    private Slider healthBarSlider;
+    private Text healthValueText;
+    private HealthUIDisplay healthUIDisplay;
 
     public static Module1Ui EnsureForScene()
     {
@@ -43,12 +46,14 @@ public class Module1Ui : MonoBehaviour
         CreateHud();
     }
 
-    public void UpdateStageHud(int stageIndex, StageType stageType)
+    public void UpdateStageHud(int roundIndex, StageType stageType)
     {
         EnsureHud();
-        if (stageText != null)
+        if (roundText != null)
         {
-            stageText.text = $"Stage {stageIndex}  |  {stageType}";
+            bool isRoundStage = stageType == StageType.Combat || stageType == StageType.Elite;
+            roundText.gameObject.SetActive(isRoundStage);
+            roundText.text = isRoundStage ? $"Round {roundIndex} | {stageType}" : string.Empty;
         }
     }
 
@@ -59,31 +64,6 @@ public class Module1Ui : MonoBehaviour
         {
             messageText.text = message;
         }
-    }
-
-    public void ShowRunMenu(bool showContinue)
-    {
-        if (runMenuPanel == null)
-        {
-            runMenuPanel = CreatePanel("Run Menu", new Vector2(460f, 260f));
-        }
-
-        RemoveChildren(runMenuPanel.transform);
-        runMenuPanel.SetActive(true);
-        CreateText(runMenuPanel.transform, "Arena Survival", 32, TextAnchor.MiddleCenter, 52f);
-        CreateText(
-            runMenuPanel.transform,
-            showContinue ? "Continue your saved run or start a new run." : "Start a new procedural run.",
-            18,
-            TextAnchor.MiddleCenter,
-            42f);
-
-        if (showContinue)
-        {
-            CreateButton(runMenuPanel.transform, "Continue", () => RunManager.EnsureInstance().ContinueRun());
-        }
-
-        CreateButton(runMenuPanel.transform, "New Game", () => RunManager.EnsureInstance().BeginNewRun());
     }
 
     public void ShowShop(IReadOnlyList<ShopUpgradeType> upgrades)
@@ -132,11 +112,6 @@ public class Module1Ui : MonoBehaviour
 
     public void HideAllPanels()
     {
-        if (runMenuPanel != null)
-        {
-            runMenuPanel.SetActive(false);
-        }
-
         HideShop();
 
         if (deathPanel != null)
@@ -147,22 +122,122 @@ public class Module1Ui : MonoBehaviour
 
     private void CreateHud()
     {
-        if (stageText != null || messageText != null)
+        if (roundText != null || messageText != null)
         {
             return;
         }
 
-        stageText = CreateFloatingText("Stage HUD", new Vector2(18f, -18f), new Vector2(0f, 1f), TextAnchor.UpperLeft, 24);
-        stageText.text = "Stage 1  |  Combat";
-        messageText = CreateFloatingText("Stage Message", new Vector2(0f, -18f), new Vector2(0.5f, 1f), TextAnchor.UpperCenter, 22);
+        roundText = CreateFloatingText("Round HUD", new Vector2(0f, -18f), new Vector2(0.5f, 1f), TextAnchor.UpperCenter, 24);
+        roundText.text = "Round 1 | Combat";
+
+        messageText = CreateFloatingText("Stage Message", new Vector2(0f, -52f), new Vector2(0.5f, 1f), TextAnchor.UpperCenter, 20);
+    }
+
+    private void CreateHealthBarUI()
+    {
+        if (healthBarContainer != null)
+        {
+            return;
+        }
+
+        // Create container for health bar
+        healthBarContainer = new GameObject("Health Bar Container", typeof(RectTransform), typeof(VerticalLayoutGroup));
+        healthBarContainer.transform.SetParent(transform, false);
+
+        RectTransform containerRect = healthBarContainer.GetComponent<RectTransform>();
+        containerRect.anchorMin = new Vector2(0f, 1f);
+        containerRect.anchorMax = new Vector2(0f, 1f);
+        containerRect.pivot = new Vector2(0f, 1f);
+        containerRect.anchoredPosition = new Vector2(20f, -20f);
+        containerRect.sizeDelta = new Vector2(280f, 80f);
+
+        VerticalLayoutGroup layout = healthBarContainer.GetComponent<VerticalLayoutGroup>();
+        layout.spacing = 8f;
+        layout.childControlHeight = false;
+        layout.childControlWidth = true;
+        layout.childForceExpandWidth = true;
+
+        // Create health value text (100 / 150 HP)
+        GameObject healthTextObj = new GameObject("Health Text", typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+        healthTextObj.transform.SetParent(healthBarContainer.transform, false);
+
+        healthValueText = healthTextObj.GetComponent<Text>();
+        healthValueText.font = font;
+        healthValueText.text = "100 / 100";
+        healthValueText.fontSize = 18;
+        healthValueText.fontStyle = FontStyle.Bold;
+        healthValueText.alignment = TextAnchor.MiddleLeft;
+        healthValueText.color = new Color(0.9f, 0.2f, 0.2f, 1f); // Red color for health
+        healthValueText.horizontalOverflow = HorizontalWrapMode.Overflow;
+
+        RectTransform textRect = healthTextObj.GetComponent<RectTransform>();
+        textRect.sizeDelta = new Vector2(280f, 24f);
+        healthTextObj.GetComponent<LayoutElement>().preferredHeight = 24f;
+
+        // Create health bar slider
+        GameObject sliderObj = new GameObject("Health Bar Slider", typeof(RectTransform), typeof(Slider), typeof(HealthUIDisplay), typeof(LayoutElement));
+        sliderObj.transform.SetParent(healthBarContainer.transform, false);
+
+        healthBarSlider = sliderObj.GetComponent<Slider>();
+        healthBarSlider.minValue = 0f;
+        healthBarSlider.maxValue = 1f;
+        healthBarSlider.value = 1f;
+        healthBarSlider.interactable = false;
+
+        RectTransform sliderRect = sliderObj.GetComponent<RectTransform>();
+        sliderRect.sizeDelta = new Vector2(280f, 24f);
+        sliderObj.GetComponent<LayoutElement>().preferredHeight = 24f;
+
+        // Setup slider appearance
+        Image sliderBg = sliderObj.AddComponent<Image>();
+        sliderBg.color = new Color(0.1f, 0.1f, 0.1f, 0.8f);
+
+        // Create fill area
+        GameObject fillAreaObj = new GameObject("Fill Area", typeof(RectTransform), typeof(Image));
+        fillAreaObj.transform.SetParent(sliderObj.transform, false);
+        RectTransform fillAreaRect = fillAreaObj.GetComponent<RectTransform>();
+        fillAreaRect.anchorMin = Vector2.zero;
+        fillAreaRect.anchorMax = Vector2.one;
+        fillAreaRect.offsetMin = new Vector2(4f, 4f);
+        fillAreaRect.offsetMax = new Vector2(-4f, -4f);
+
+        // Create fill
+        GameObject fillObj = new GameObject("Fill", typeof(RectTransform), typeof(Image));
+        fillObj.transform.SetParent(fillAreaObj.transform, false);
+        Image fillImage = fillObj.GetComponent<Image>();
+        fillImage.color = new Color(0.2f, 1f, 0.2f, 1f); // Green health bar
+        RectTransform fillRect = fillObj.GetComponent<RectTransform>();
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = Vector2.one;
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+
+        healthBarSlider.fillRect = fillRect;
+
+        // Setup HealthUIDisplay
+        healthUIDisplay = sliderObj.GetComponent<HealthUIDisplay>();
+        healthUIDisplay.healthFillImage = fillImage;
+        healthUIDisplay.healthValueText = healthValueText;
     }
 
     private void EnsureHud()
     {
-        if (stageText == null || messageText == null)
+        if (roundText == null || messageText == null)
         {
             CreateHud();
         }
+    }
+
+    public Slider GetHealthBar()
+    {
+        EnsureHud();
+        return healthBarSlider;
+    }
+
+    public HealthUIDisplay GetHealthUIDisplay()
+    {
+        EnsureHud();
+        return healthUIDisplay;
     }
 
     private Text CreateFloatingText(string name, Vector2 anchoredPosition, Vector2 anchor, TextAnchor alignment, int fontSize)
