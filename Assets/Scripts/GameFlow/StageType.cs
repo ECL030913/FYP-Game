@@ -2,7 +2,9 @@ public enum StageType
 {
     Combat,
     Elite,
-    Shop
+    Shop,
+    Boss,
+    End
 }
 
 public enum ShopUpgradeType

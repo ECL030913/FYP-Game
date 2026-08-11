@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: Bat Enemy
   m_EditorClassIdentifier: Assembly-CSharp::EnemyScriptableObject
   moveSpeed: 1
-  maxHealth: 10
-  damage: 30
+  maxHealth: 30
+  damage: 18
+  experienceReward: 5
+  coinReward: 2
   detectionRadius: 6
   attackRange: 0.7

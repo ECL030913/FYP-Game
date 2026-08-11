@@ -16,6 +16,11 @@ public class RunManager : MonoBehaviour
         public int currentStageType;
         public int eliteStagesCompleted;
         public int nonEliteStagesSinceLastElite;
+        public int playerLevel;
+        public int currentExperience;
+        public int experienceToNextLevel;
+        public int coins;
+        public int equippedWeapon;
         public float savedPlayerHealth;
         public float maxHealthBonus;
         public float moveSpeedBonus;
@@ -96,8 +101,8 @@ public class RunManager : MonoBehaviour
     }
 
     /// <summary>
-    /// A death ends the current run. Removing its save prevents Continue from
-    /// reopening a run whose player health is already zero.
+    /// Death or successful completion ends the current run. Removing its save
+    /// prevents Continue from reopening a terminal run.
     /// </summary>
     public void EndRun()
     {
@@ -128,7 +133,9 @@ public class RunManager : MonoBehaviour
         }
 
         Data.currentStageIndex++;
-        if (nextStageType == StageType.Combat || nextStageType == StageType.Elite)
+        if (nextStageType == StageType.Combat
+            || nextStageType == StageType.Elite
+            || nextStageType == StageType.Boss)
         {
             Data.currentRoundIndex++;
         }
@@ -162,6 +169,11 @@ public class RunManager : MonoBehaviour
             currentStageType = (int)Data.currentStageType,
             eliteStagesCompleted = Data.eliteStagesCompleted,
             nonEliteStagesSinceLastElite = Data.nonEliteStagesSinceLastElite,
+            playerLevel = Data.playerLevel,
+            currentExperience = Data.currentExperience,
+            experienceToNextLevel = Data.experienceToNextLevel,
+            coins = Data.coins,
+            equippedWeapon = (int)Data.equippedWeapon,
             savedPlayerHealth = Data.savedPlayerHealth,
             maxHealthBonus = Data.maxHealthBonus,
             moveSpeedBonus = Data.moveSpeedBonus,
@@ -197,10 +209,12 @@ public class RunManager : MonoBehaviour
                 return;
             }
 
+            bool hasProgressionData = save.playerLevel > 0 || save.experienceToNextLevel > 0;
+
             Data.currentStageType = Enum.IsDefined(typeof(StageType), save.currentStageType)
                 ? (StageType)save.currentStageType
                 : StageType.Combat;
-            Data.currentStageIndex = Mathf.Max(1, save.currentStageIndex);
+            Data.currentStageIndex = Mathf.Clamp(save.currentStageIndex, 1, StageManager.MaxStageCount);
             Data.currentRoundIndex = Mathf.Max(1, save.currentRoundIndex);
             if (save.currentRoundIndex <= 0)
             {
@@ -217,12 +231,24 @@ public class RunManager : MonoBehaviour
                 Data.eliteStagesCompleted = 1;
             }
             Data.nonEliteStagesSinceLastElite = Mathf.Max(0, save.nonEliteStagesSinceLastElite);
+            Data.playerLevel = Mathf.Max(1, save.playerLevel);
+            Data.currentExperience = Mathf.Max(0, save.currentExperience);
+            // Recalculate this value so saves from the previous +15 XP curve
+            // migrate to the new, slower +20-per-level progression.
+            Data.experienceToNextLevel = 30 + Mathf.Max(0, Data.playerLevel - 1) * 20;
+            Data.coins = Mathf.Max(0, save.coins);
+            Data.equippedWeapon = hasProgressionData
+                && Enum.IsDefined(typeof(WeaponType), save.equippedWeapon)
+                ? (WeaponType)save.equippedWeapon
+                : WeaponType.RangedPierce;
             Data.savedPlayerHealth = Mathf.Max(0f, save.savedPlayerHealth);
-            Data.maxHealthBonus = Mathf.Max(0f, save.maxHealthBonus);
-            Data.moveSpeedBonus = Mathf.Max(0f, save.moveSpeedBonus);
-            Data.weaponDamageMultiplier = Mathf.Max(1f, save.weaponDamageMultiplier);
-            Data.cooldownMultiplier = Mathf.Clamp(save.cooldownMultiplier, 0.35f, 1f);
-            Data.attackRangeMultiplier = Mathf.Max(1f, save.attackRangeMultiplier);
+            Data.maxHealthBonus = Mathf.Clamp(save.maxHealthBonus, 0f, 120f);
+            Data.moveSpeedBonus = Mathf.Clamp(save.moveSpeedBonus, 0f, 2.1f);
+            Data.weaponDamageMultiplier = Mathf.Clamp(save.weaponDamageMultiplier, 1f, 1.8f);
+            Data.cooldownMultiplier = save.cooldownMultiplier > 0f
+                ? Mathf.Clamp(save.cooldownMultiplier, 0.6f, 1f)
+                : 1f;
+            Data.attackRangeMultiplier = Mathf.Clamp(save.attackRangeMultiplier, 1f, 1.75f);
             HasSavedRun = true;
         }
         catch (Exception exception)

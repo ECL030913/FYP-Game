@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: Black Bat Enemy
   m_EditorClassIdentifier: Assembly-CSharp::EnemyScriptableObject
   moveSpeed: 2
-  maxHealth: 25
-  damage: 45
+  maxHealth: 80
+  damage: 28
+  experienceReward: 12
+  coinReward: 6
   detectionRadius: 7
   attackRange: 0.75

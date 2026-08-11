@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
@@ -13,8 +14,12 @@ public class Module1Ui : MonoBehaviour
     private Font font;
     private Text roundText;
     private Text messageText;
+    private Text progressText;
     private GameObject shopPanel;
+    private GameObject levelUpPanel;
+    private GameObject pausePanel;
     private GameObject deathPanel;
+    private GameObject victoryPanel;
     private GameObject healthBarContainer;
     private Slider healthBarSlider;
     private Text healthValueText;
@@ -46,14 +51,13 @@ public class Module1Ui : MonoBehaviour
         CreateHud();
     }
 
-    public void UpdateStageHud(int roundIndex, StageType stageType)
+    public void UpdateStageHud(int stageIndex, int maximumStageCount, StageType stageType)
     {
         EnsureHud();
         if (roundText != null)
         {
-            bool isRoundStage = stageType == StageType.Combat || stageType == StageType.Elite;
-            roundText.gameObject.SetActive(isRoundStage);
-            roundText.text = isRoundStage ? $"Round {roundIndex} | {stageType}" : string.Empty;
+            roundText.gameObject.SetActive(true);
+            roundText.text = $"Stage {stageIndex} / {maximumStageCount} | {stageType}";
         }
     }
 
@@ -83,7 +87,95 @@ public class Module1Ui : MonoBehaviour
         {
             ShopUpgradeType capturedUpgrade = upgrade;
             string label = stageManager != null ? stageManager.GetUpgradeLabel(upgrade) : upgrade.ToString();
-            CreateButton(shopPanel.transform, label, () => stageManager?.PurchaseUpgrade(capturedUpgrade));
+            CreateButton(shopPanel.transform, label, () => stageManager?.ApplyLevelUpgrade(capturedUpgrade));
+        }
+    }
+
+    public void ShowWeaponShop(IReadOnlyList<WeaponType> weaponTypes)
+    {
+        if (shopPanel == null)
+        {
+            shopPanel = CreatePanel("Weapon Shop", new Vector2(680f, 620f));
+        }
+
+        RemoveChildren(shopPanel.transform);
+        shopPanel.SetActive(true);
+
+        RunData data = RunManager.EnsureInstance().Data;
+        StageManager stageManager = FindAnyObjectByType<StageManager>();
+        CreateText(shopPanel.transform, $"Weapon Shop - Coins: {data.coins}", 28, TextAnchor.MiddleCenter, 50f);
+        CreateText(shopPanel.transform, "Choose one weapon or leave without buying.", 17, TextAnchor.MiddleCenter, 34f);
+
+        foreach (WeaponType weaponType in weaponTypes)
+        {
+            WeaponType capturedType = weaponType;
+            WeaponDefinition definition = WeaponCatalog.Get(weaponType);
+            bool equipped = data.equippedWeapon == weaponType;
+            bool affordable = data.coins >= definition.Price;
+            string state = equipped ? " [EQUIPPED]" : affordable ? string.Empty : " [NOT ENOUGH COINS]";
+            string label = $"{definition.DisplayName} - {definition.Price} coins{state}\n{WeaponCatalog.GetStatsText(weaponType)}\n{definition.Description}";
+            Button button = CreateButton(
+                shopPanel.transform,
+                label,
+                () => stageManager?.PurchaseWeapon(capturedType),
+                84f);
+            AddButtonIcon(button, WeaponCatalog.GetIcon(weaponType));
+            button.interactable = !equipped && affordable;
+        }
+
+        CreateButton(shopPanel.transform, "Leave Shop (No Purchase)", () => stageManager?.LeaveShop(), 52f);
+    }
+
+    public void ShowLevelUp(IReadOnlyList<ShopUpgradeType> upgrades)
+    {
+        if (levelUpPanel == null)
+        {
+            levelUpPanel = CreatePanel("Level Up", new Vector2(520f, 390f));
+        }
+
+        RemoveChildren(levelUpPanel.transform);
+        levelUpPanel.SetActive(true);
+        CreateText(levelUpPanel.transform, "Level Up!", 30, TextAnchor.MiddleCenter, 52f);
+        CreateText(levelUpPanel.transform, "Choose one upgrade. The game is paused.", 17, TextAnchor.MiddleCenter, 38f);
+
+        StageManager stageManager = FindAnyObjectByType<StageManager>();
+        PlayerProgression progression = FindAnyObjectByType<PlayerProgression>();
+        foreach (ShopUpgradeType upgrade in upgrades)
+        {
+            ShopUpgradeType capturedUpgrade = upgrade;
+            string label = stageManager != null ? stageManager.GetUpgradeLabel(upgrade) : upgrade.ToString();
+            CreateButton(levelUpPanel.transform, label, () => progression?.SelectUpgrade(capturedUpgrade), 58f);
+        }
+    }
+
+    public void HideLevelUp()
+    {
+        if (levelUpPanel != null)
+        {
+            levelUpPanel.SetActive(false);
+        }
+    }
+
+    public void ShowPauseMenu()
+    {
+        if (pausePanel == null)
+        {
+            pausePanel = CreatePanel("Pause Menu", new Vector2(460f, 330f));
+        }
+
+        RemoveChildren(pausePanel.transform);
+        pausePanel.SetActive(true);
+        CreateText(pausePanel.transform, "Paused", 32, TextAnchor.MiddleCenter, 56f);
+        CreateButton(pausePanel.transform, "Resume", () => GamePauseManager.Instance?.ResumeFromPauseMenu());
+        CreateButton(pausePanel.transform, "Main Menu", ReturnToMainMenu);
+        CreateButton(pausePanel.transform, "Quit Game", QuitGame);
+    }
+
+    public void HidePauseMenu()
+    {
+        if (pausePanel != null)
+        {
+            pausePanel.SetActive(false);
         }
     }
 
@@ -102,6 +194,21 @@ public class Module1Ui : MonoBehaviour
         CreateButton(deathPanel.transform, "Quit Game", QuitGame);
     }
 
+    public void ShowVictoryMenu()
+    {
+        if (victoryPanel == null)
+        {
+            victoryPanel = CreatePanel("Victory Menu", new Vector2(480f, 280f));
+        }
+
+        RemoveChildren(victoryPanel.transform);
+        victoryPanel.SetActive(true);
+        CreateText(victoryPanel.transform, "Run Complete", 32, TextAnchor.MiddleCenter, 52f);
+        CreateText(victoryPanel.transform, "You defeated the final boss and cleared all 10 stages.", 18, TextAnchor.MiddleCenter, 52f);
+        CreateButton(victoryPanel.transform, "Return to Main Menu", ReturnToMainMenu);
+        CreateButton(victoryPanel.transform, "Quit Game", QuitGame);
+    }
+
     public void HideShop()
     {
         if (shopPanel != null)
@@ -113,10 +220,26 @@ public class Module1Ui : MonoBehaviour
     public void HideAllPanels()
     {
         HideShop();
+        HideLevelUp();
+        HidePauseMenu();
 
         if (deathPanel != null)
         {
             deathPanel.SetActive(false);
+        }
+
+        if (victoryPanel != null)
+        {
+            victoryPanel.SetActive(false);
+        }
+    }
+
+    public void UpdateProgressHud(int level, int experience, int requiredExperience, int coins, string weaponName)
+    {
+        EnsureHud();
+        if (progressText != null)
+        {
+            progressText.text = $"Level {level} | XP {experience} / {requiredExperience} | Coins {coins}\nWeapon: {weaponName}";
         }
     }
 
@@ -131,6 +254,9 @@ public class Module1Ui : MonoBehaviour
         roundText.text = "Round 1 | Combat";
 
         messageText = CreateFloatingText("Stage Message", new Vector2(0f, -52f), new Vector2(0.5f, 1f), TextAnchor.UpperCenter, 20);
+
+        progressText = CreateFloatingText("Progress HUD", new Vector2(20f, -92f), new Vector2(0f, 1f), TextAnchor.UpperLeft, 17);
+        progressText.text = "Level 1 | XP 0 / 30 | Coins 0\nWeapon: Rune Knife";
     }
 
     private void CreateHealthBarUI()
@@ -307,7 +433,7 @@ public class Module1Ui : MonoBehaviour
         textObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
     }
 
-    private void CreateButton(Transform parent, string label, Action onClick)
+    private Button CreateButton(Transform parent, string label, Action onClick, float preferredHeight = 46f)
     {
         GameObject buttonObject = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
         buttonObject.transform.SetParent(parent, false);
@@ -318,7 +444,7 @@ public class Module1Ui : MonoBehaviour
         Button button = buttonObject.GetComponent<Button>();
         button.targetGraphic = image;
         button.onClick.AddListener(() => onClick?.Invoke());
-        buttonObject.GetComponent<LayoutElement>().preferredHeight = 46f;
+        buttonObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
 
         GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
         labelObject.transform.SetParent(buttonObject.transform, false);
@@ -334,15 +460,58 @@ public class Module1Ui : MonoBehaviour
         text.fontSize = 19;
         text.alignment = TextAnchor.MiddleCenter;
         text.color = Color.white;
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        return button;
+    }
+
+    private static void AddButtonIcon(Button button, Sprite sprite)
+    {
+        if (button == null || sprite == null)
+        {
+            return;
+        }
+
+        Transform labelTransform = button.transform.Find("Label");
+        if (labelTransform != null)
+        {
+            RectTransform labelRect = labelTransform.GetComponent<RectTransform>();
+            labelRect.offsetMin = new Vector2(78f, 0f);
+            labelRect.offsetMax = new Vector2(-8f, 0f);
+        }
+
+        GameObject iconObject = new GameObject("Weapon Icon", typeof(RectTransform), typeof(Image));
+        iconObject.transform.SetParent(button.transform, false);
+        RectTransform iconRect = iconObject.GetComponent<RectTransform>();
+        iconRect.anchorMin = new Vector2(0f, 0.5f);
+        iconRect.anchorMax = new Vector2(0f, 0.5f);
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.anchoredPosition = new Vector2(40f, 0f);
+        iconRect.sizeDelta = new Vector2(66f, 66f);
+
+        Image iconImage = iconObject.GetComponent<Image>();
+        iconImage.sprite = sprite;
+        iconImage.preserveAspect = true;
+        iconImage.raycastTarget = false;
     }
 
     private static void QuitGame()
     {
+        GamePauseManager.Instance?.ResumeAll();
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
 #else
         Application.Quit();
 #endif
+    }
+
+    private static void ReturnToMainMenu()
+    {
+        PlayerStats player = FindAnyObjectByType<PlayerStats>();
+        RunManager.Instance?.SavePlayerState(player);
+        RunManager.Instance?.SaveRun();
+        GamePauseManager.Instance?.ResumeAll();
+        SceneManager.LoadScene("Menu");
     }
 
     private static void RemoveChildren(Transform parent)

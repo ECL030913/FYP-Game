@@ -13,6 +13,7 @@ public class MainMenuController : MonoBehaviour
     [Serializable]
     private class SavePreview
     {
+        public int currentStageIndex;
         public int currentRoundIndex;
         public int currentStageType;
         public float savedPlayerHealth;
@@ -73,7 +74,8 @@ public class MainMenuController : MonoBehaviour
             SavePreview savePreview = JsonUtility.FromJson<SavePreview>(File.ReadAllText(SavePath));
             string stageTypeString = GetStageTypeString(savePreview.currentStageType);
 
-            SaveSlotText.text = $"Round {savePreview.currentRoundIndex} \u00b7 {stageTypeString}";
+            int stageIndex = Mathf.Clamp(savePreview.currentStageIndex, 1, StageManager.MaxStageCount);
+            SaveSlotText.text = $"Stage {stageIndex} / {StageManager.MaxStageCount} \u00b7 {stageTypeString}";
             BtnContinue.interactable = true;
         }
         catch (Exception exception)
@@ -94,6 +96,8 @@ public class MainMenuController : MonoBehaviour
                 return "Elite";
             case 2:
                 return "Shop";
+            case 3:
+                return "Boss";
             default:
                 return "Combat";
         }

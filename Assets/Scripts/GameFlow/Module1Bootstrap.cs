@@ -36,6 +36,21 @@ public static class Module1Bootstrap
 
         RunManager.EnsureInstance();
         Module1Ui.EnsureForScene();
+        GamePauseManager.EnsureForScene();
+
+        PlayerStats player = Object.FindAnyObjectByType<PlayerStats>();
+        if (player != null)
+        {
+            if (player.GetComponent<PlayerProgression>() == null)
+            {
+                player.gameObject.AddComponent<PlayerProgression>();
+            }
+
+            if (player.GetComponent<PlayerWeaponSystem>() == null)
+            {
+                player.gameObject.AddComponent<PlayerWeaponSystem>();
+            }
+        }
 
         if (spawner.GetComponent<StageManager>() == null)
         {

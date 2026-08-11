@@ -102,20 +102,24 @@ public class HealthUIDisplay : MonoBehaviour
             textObject.transform.SetParent(transform, false);
 
             RectTransform rectTransform = textObject.GetComponent<RectTransform>();
-            rectTransform.anchorMin = new Vector2(0f, 1f);
-            rectTransform.anchorMax = new Vector2(1f, 1f);
-            rectTransform.pivot = new Vector2(0.5f, 0f);
-            rectTransform.anchoredPosition = healthTextOffset;
-            rectTransform.sizeDelta = new Vector2(0f, 24f);
+            rectTransform.anchorMin = Vector2.zero;
+            rectTransform.anchorMax = Vector2.one;
+            rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            rectTransform.offsetMin = Vector2.zero;
+            rectTransform.offsetMax = Vector2.zero;
 
             healthValueText = textObject.GetComponent<Text>();
             healthValueText.alignment = TextAnchor.MiddleCenter;
             healthValueText.color = Color.white;
-            healthValueText.fontSize = healthTextFontSize;
+            healthValueText.fontSize = Mathf.Max(14, healthTextFontSize);
             healthValueText.fontStyle = FontStyle.Bold;
             healthValueText.raycastTarget = false;
             healthValueText.horizontalOverflow = HorizontalWrapMode.Overflow;
             healthValueText.verticalOverflow = VerticalWrapMode.Overflow;
+
+            Outline outline = textObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, 0.9f);
+            outline.effectDistance = new Vector2(1f, -1f);
         }
 
         healthValueText.font = uiFont;
@@ -209,6 +213,7 @@ public class HealthUIDisplay : MonoBehaviour
         text.color = new Color(1f, 0.2f, 0.2f, 1f); // Red color
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.raycastTarget = false;
 
         CanvasGroup canvasGroup = popupObject.GetComponent<CanvasGroup>();
         canvasGroup.alpha = 1f;
@@ -227,7 +232,9 @@ public class HealthUIDisplay : MonoBehaviour
 
         while (elapsed < duration)
         {
-            elapsed += Time.deltaTime;
+            // Popups are UI feedback and should finish even while gameplay is
+            // paused by the Shop, level-up selection, or ESC menu.
+            elapsed += Time.unscaledDeltaTime;
             float progress = elapsed / duration;
 
             // Move up
@@ -282,6 +289,7 @@ public class HealthUIDisplay : MonoBehaviour
         text.color = new Color(0.2f, 1f, 0.2f, 1f); // Green color
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.raycastTarget = false;
 
         CanvasGroup canvasGroup = popupObject.GetComponent<CanvasGroup>();
         canvasGroup.alpha = 1f;

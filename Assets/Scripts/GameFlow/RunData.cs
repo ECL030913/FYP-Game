@@ -10,6 +10,13 @@ public class RunData : ScriptableObject
     public int eliteStagesCompleted;
     public int nonEliteStagesSinceLastElite;
 
+    [Header("Progression")]
+    public int playerLevel = 1;
+    public int currentExperience;
+    public int experienceToNextLevel = 30;
+    public int coins;
+    public WeaponType equippedWeapon = WeaponType.RangedPierce;
+
     [Header("Player State")]
     public float savedPlayerHealth;
     public bool isNewRun;
@@ -26,6 +33,11 @@ public class RunData : ScriptableObject
         currentStageType = StageType.Combat;
         eliteStagesCompleted = 0;
         nonEliteStagesSinceLastElite = 0;
+        playerLevel = 1;
+        currentExperience = 0;
+        experienceToNextLevel = 30;
+        coins = 0;
+        equippedWeapon = WeaponType.RangedPierce;
         savedPlayerHealth = startingHealth;
         isNewRun = true;
         maxHealthBonus = 0f;

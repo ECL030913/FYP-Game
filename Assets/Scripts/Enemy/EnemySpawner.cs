@@ -21,6 +21,7 @@ public class EnemySpawner : MonoBehaviour
         public int spawnCount;
         public GameObject enemyPrefab;
         public bool isBoss;
+        public bool isFinalBoss;
     }
 
     [Header("Pooling")]
@@ -46,11 +47,15 @@ public class EnemySpawner : MonoBehaviour
     public float spawnRadius = 4f;
     public float enemySpacing = 0.5f;
     public float minDistanceFromPlayer = 5f;
+    public float minimumEnemySpawnSeparation = 1.25f;
+    public float bossSpawnSeparation = 3f;
 
     private float spawnTimer;
     private bool isWaitingForNextWave;
     private bool moduleStageManaged;
     private bool moduleStageComplete;
+    private StageType moduleStageType;
+    private int moduleStageIndex = 1;
     private Transform player;
     private GameObject normalEnemyPrefab;
 
@@ -115,16 +120,25 @@ public class EnemySpawner : MonoBehaviour
 
         moduleStageManaged = true;
         moduleStageComplete = false;
+        moduleStageType = stageType;
+        moduleStageIndex = Mathf.Max(1, stageIndex);
         currentWaveCount = 0;
         spawnTimer = 0f;
         enemiesAlive = 0;
         maxEnemiesReached = false;
 
-        int normalCount = 6 + Mathf.Max(0, stageIndex - 1) * 2;
-        int reinforcedCount = Mathf.Max(1, stageIndex / 2);
+        int normalCount = 6 + Mathf.Max(1, stageIndex);
+        int reinforcedCount = 1 + Mathf.Max(0, stageIndex - 1) / 3;
         List<EnemyGroup> groups = new List<EnemyGroup>();
 
-        if (stageType == StageType.Elite)
+        if (stageType == StageType.Boss)
+        {
+            groups.Add(CreateGroup("Final Boss", 1, reinforcedEnemyPrefab, true, true));
+            groups.Add(CreateGroup("Boss Guard", 1, reinforcedEnemyPrefab, true));
+            groups.Add(CreateGroup("Reinforced Bat", 3, reinforcedEnemyPrefab));
+            groups.Add(CreateGroup("Bat", 8, normalEnemyPrefab));
+        }
+        else if (stageType == StageType.Elite)
         {
             groups.Add(CreateGroup("Elite Boss", 1, reinforcedEnemyPrefab, true));
             groups.Add(CreateGroup("Reinforced Bat", reinforcedCount + 1, reinforcedEnemyPrefab));
@@ -148,7 +162,12 @@ public class EnemySpawner : MonoBehaviour
         CalculateWaveQuota();
     }
 
-    private EnemyGroup CreateGroup(string name, int count, GameObject prefab, bool isBoss = false)
+    private EnemyGroup CreateGroup(
+        string name,
+        int count,
+        GameObject prefab,
+        bool isBoss = false,
+        bool isFinalBoss = false)
     {
         return new EnemyGroup
         {
@@ -156,7 +175,8 @@ public class EnemySpawner : MonoBehaviour
             enemyCount = count,
             spawnCount = 0,
             enemyPrefab = prefab,
-            isBoss = isBoss
+            isBoss = isBoss,
+            isFinalBoss = isFinalBoss
         };
     }
 
@@ -236,22 +256,34 @@ public class EnemySpawner : MonoBehaviour
         waves[currentWaveCount].waveQuota = currentWaveQuota;
     }
 
-    private Vector2 GetSpawnPosition()
+    private Vector2 GetSpawnPosition(float minimumSeparation)
     {
         Vector2 fallbackPosition = player != null ? player.position : transform.position;
+        float bestMinimumDistance = -1f;
 
-        for (int i = 0; i < 20; i++)
+        for (int i = 0; i < 50; i++)
         {
             Transform spawnPoint = relativeSpawnPoints[Random.Range(0, relativeSpawnPoints.Count)];
             Vector2 spawnPosition = (Vector2)spawnPoint.position + Random.insideUnitCircle * spawnRadius;
-            fallbackPosition = spawnPosition;
 
             if (player != null && Vector2.Distance(player.position, spawnPosition) < minDistanceFromPlayer)
             {
                 continue;
             }
 
-            if (MapBoundary.Instance == null || MapBoundary.Instance.IsInside(spawnPosition, enemySpacing))
+            if (MapBoundary.Instance != null && !MapBoundary.Instance.IsInside(spawnPosition, enemySpacing))
+            {
+                continue;
+            }
+
+            float nearestEnemyDistance = GetNearestActiveEnemyDistance(spawnPosition);
+            if (nearestEnemyDistance > bestMinimumDistance)
+            {
+                bestMinimumDistance = nearestEnemyDistance;
+                fallbackPosition = spawnPosition;
+            }
+
+            if (nearestEnemyDistance >= minimumSeparation)
             {
                 return spawnPosition;
             }
@@ -262,15 +294,46 @@ public class EnemySpawner : MonoBehaviour
             : fallbackPosition;
     }
 
+    private static float GetNearestActiveEnemyDistance(Vector2 position)
+    {
+        float nearestDistance = float.PositiveInfinity;
+        for (int i = activeEnemies.Count - 1; i >= 0; i--)
+        {
+            EnemyStats enemy = activeEnemies[i];
+            if (enemy == null)
+            {
+                activeEnemies.RemoveAt(i);
+                continue;
+            }
+
+            if (!enemy.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            nearestDistance = Mathf.Min(
+                nearestDistance,
+                Vector2.Distance(position, enemy.transform.position));
+        }
+
+        return nearestDistance;
+    }
+
     private void SpawnEnemies()
     {
-        if (currentWaveCount >= waves.Count || maxEnemiesReached)
+        if (currentWaveCount >= waves.Count || moduleStageComplete)
         {
             return;
         }
 
         Wave currentWave = waves[currentWaveCount];
         if (currentWave.spawnCount >= currentWave.waveQuota)
+        {
+            return;
+        }
+
+        maxEnemiesReached = enemiesAlive >= Mathf.Max(1, maxEnemiesAllowed);
+        if (maxEnemiesReached)
         {
             return;
         }
@@ -282,7 +345,7 @@ public class EnemySpawner : MonoBehaviour
                 continue;
             }
 
-            if (enemiesAlive >= maxEnemiesAllowed)
+            if (enemiesAlive >= Mathf.Max(1, maxEnemiesAllowed))
             {
                 maxEnemiesReached = true;
                 return;
@@ -294,10 +357,19 @@ public class EnemySpawner : MonoBehaviour
                 continue;
             }
 
-            Vector2 spawnPosition = GetSpawnPosition();
+            float separation = enemyGroup.isBoss
+                ? bossSpawnSeparation
+                : minimumEnemySpawnSeparation;
+            Vector2 spawnPosition = GetSpawnPosition(separation);
             GameObject spawnedEnemy = useObjectPooling && ObjectPoolManager.Instance != null
                 ? ObjectPoolManager.Instance.GetObject(enemyGroup.enemyPrefab, spawnPosition, Quaternion.identity)
                 : Instantiate(enemyGroup.enemyPrefab, spawnPosition, Quaternion.identity);
+
+            if (spawnedEnemy == null)
+            {
+                Debug.LogWarning($"EnemySpawner: Failed to spawn group {enemyGroup.enemyName}.");
+                continue;
+            }
 
             if (enemyGroup.isBoss)
             {
@@ -307,7 +379,36 @@ public class EnemySpawner : MonoBehaviour
                     modifier = spawnedEnemy.AddComponent<StageEnemyModifier>();
                 }
 
-                modifier.ConfigureAsBoss();
+                if (enemyGroup.isFinalBoss)
+                {
+                    modifier.ConfigureAsFinalBoss();
+                }
+                else
+                {
+                    modifier.ConfigureAsBoss(moduleStageIndex);
+                }
+            }
+            else
+            {
+                EnemyStats stats = spawnedEnemy.GetComponent<EnemyStats>();
+                if (stats != null)
+                {
+                    float healthMultiplier = 1f + (moduleStageIndex - 1) * 0.18f;
+                    float damageMultiplier = 1f + (moduleStageIndex - 1) * 0.06f;
+
+                    if (moduleStageType == StageType.Elite)
+                    {
+                        healthMultiplier *= 1.12f;
+                        damageMultiplier *= 1.08f;
+                    }
+                    else if (moduleStageType == StageType.Boss)
+                    {
+                        healthMultiplier *= 1.1f;
+                        damageMultiplier *= 1.1f;
+                    }
+
+                    stats.ApplyStageMultipliers(healthMultiplier, damageMultiplier);
+                }
             }
 
             enemyGroup.spawnCount++;
@@ -350,6 +451,44 @@ public class EnemySpawner : MonoBehaviour
     public void OnEnemyKilled()
     {
         enemiesAlive = Mathf.Max(0, enemiesAlive - 1);
+        maxEnemiesReached = enemiesAlive >= Mathf.Max(1, maxEnemiesAllowed);
+    }
+
+    /// <summary>
+    /// The final boss is the objective of Stage 10. Its death immediately
+    /// removes all surviving adds and completes the encounter, regardless of
+    /// how many scheduled enemies were still alive.
+    /// </summary>
+    public void OnFinalBossKilled(EnemyStats finalBoss)
+    {
+        if (moduleStageComplete || moduleStageType != StageType.Boss)
+        {
+            OnEnemyKilled();
+            return;
+        }
+
+        moduleStageComplete = true;
+        List<EnemyStats> enemiesToRelease = new List<EnemyStats>(activeEnemies);
+        foreach (EnemyStats enemy in enemiesToRelease)
+        {
+            if (enemy == null || enemy == finalBoss || !enemy.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            if (ObjectPoolManager.Instance != null)
+            {
+                ObjectPoolManager.Instance.ReleaseObject(enemy.gameObject);
+            }
+            else
+            {
+                Destroy(enemy.gameObject);
+            }
+        }
+
+        enemiesAlive = 0;
+        maxEnemiesReached = false;
+        GameEvents.RaiseWaveCleared();
     }
 
     /// <summary>

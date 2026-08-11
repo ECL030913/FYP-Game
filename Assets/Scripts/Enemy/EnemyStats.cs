@@ -6,7 +6,10 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
     float currentMoveSpeed;
     float currentHealth;
+    float currentMaxHealth;
     float currentDamage;
+    int currentExperienceReward;
+    int currentCoinReward;
 
     [Header("Hit Feedback")]
     [SerializeField] private float hitFlashDuration = 0.15f;
@@ -15,6 +18,11 @@ public class EnemyStats : MonoBehaviour, IPoolable
     SpriteRenderer enemySprite;
     float hitFlashTimer;
     bool isHitFlashing;
+    bool isDead;
+
+    public float CurrentHealth => currentHealth;
+    public float MaxHealth => currentMaxHealth;
+    public bool IsDead => isDead;
 
     private void Awake()
     {
@@ -27,6 +35,11 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
         enemySprite = GetComponent<SpriteRenderer>();
 
+        if (GetComponent<EnemyHealthBar>() == null)
+        {
+            gameObject.AddComponent<EnemyHealthBar>();
+        }
+
     }
     void Update()
     {
@@ -35,6 +48,11 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
     public void TakeDamage(float dmg)
     {
+        if (isDead)
+        {
+            return;
+        }
+
         currentHealth -= dmg;
 
         PlayHitFeedback();
@@ -47,11 +65,27 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
     public void Kill()
     {
+        if (isDead)
+        {
+            return;
+        }
+
+        isDead = true;
+        LootPickup.Spawn(LootType.Experience, currentExperienceReward, transform.position);
+        LootPickup.Spawn(LootType.Coin, currentCoinReward, transform.position);
         EnemySpawner es = FindAnyObjectByType<EnemySpawner>();
 
         if (es != null)
         {
-            es.OnEnemyKilled();
+            StageEnemyModifier modifier = GetComponent<StageEnemyModifier>();
+            if (modifier != null && modifier.IsFinalBoss)
+            {
+                es.OnFinalBossKilled(this);
+            }
+            else
+            {
+                es.OnEnemyKilled();
+            }
         }
 
         if (ObjectPoolManager.Instance != null)
@@ -89,6 +123,7 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
     void OnEnable()
     {
+        isDead = false;
         if (!EnemySpawner.activeEnemies.Contains(this))
         {
             EnemySpawner.activeEnemies.Add(this);
@@ -102,6 +137,7 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
     public void OnGetFromPool()
     {
+        isDead = false;
         ResetRuntimeStats();
         ResetHitFeedback();
     }
@@ -114,14 +150,22 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
     public void ApplyStageMultipliers(float healthMultiplier, float damageMultiplier)
     {
-        currentHealth = enemyData.MaxHealth * Mathf.Max(1f, healthMultiplier);
+        currentMaxHealth = enemyData.MaxHealth * Mathf.Max(1f, healthMultiplier);
+        currentHealth = currentMaxHealth;
         currentDamage = enemyData.Damage * Mathf.Max(1f, damageMultiplier);
     }
 
     public void ApplyStageStats(float health, float damage)
     {
-        currentHealth = Mathf.Max(1f, health);
+        currentMaxHealth = Mathf.Max(1f, health);
+        currentHealth = currentMaxHealth;
         currentDamage = Mathf.Max(0f, damage);
+    }
+
+    public void ApplyRewards(int experience, int coins)
+    {
+        currentExperienceReward = Mathf.Max(0, experience);
+        currentCoinReward = Mathf.Max(0, coins);
     }
 
     public void ResetRuntimeStats()
@@ -132,8 +176,11 @@ public class EnemyStats : MonoBehaviour, IPoolable
         }
 
         currentMoveSpeed = enemyData.MoveSpeed;
-        currentHealth = enemyData.MaxHealth;
+        currentMaxHealth = enemyData.MaxHealth;
+        currentHealth = currentMaxHealth;
         currentDamage = enemyData.Damage;
+        currentExperienceReward = enemyData.ExperienceReward;
+        currentCoinReward = enemyData.CoinReward;
     }
 
     void PlayHitFeedback()

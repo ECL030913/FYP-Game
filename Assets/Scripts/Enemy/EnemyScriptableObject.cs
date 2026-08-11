@@ -16,6 +16,15 @@ public class EnemyScriptableObject : ScriptableObject
     float damage;
     public float Damage { get => damage; set => damage = value; }
 
+    [Header("Rewards")]
+    [SerializeField]
+    int experienceReward = 5;
+    public int ExperienceReward { get => experienceReward; set => experienceReward = value; }
+
+    [SerializeField]
+    int coinReward = 2;
+    public int CoinReward { get => coinReward; set => coinReward = value; }
+
     [Header("FSM Settings")]
     [SerializeField]
     float detectionRadius = 6f;

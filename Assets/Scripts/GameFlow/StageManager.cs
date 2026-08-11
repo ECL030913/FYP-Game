@@ -9,12 +9,19 @@ using UnityEngine.SceneManagement;
 /// </summary>
 public class StageManager : MonoBehaviour
 {
-    private const float MaxHealthUpgradeAmount = 25f;
-    private const float MoveSpeedUpgradeAmount = 0.75f;
-    private const float DamageUpgradeAmount = 0.2f;
-    private const float AttackSpeedMultiplier = 0.85f;
-    private const float RangeUpgradeAmount = 0.25f;
-    private const float ShopHealPercent = 0.3f;
+    public const int MaxStageCount = 10;
+
+    private const float MaxHealthUpgradeAmount = 15f;
+    private const float MoveSpeedUpgradeAmount = 0.3f;
+    private const float DamageUpgradeAmount = 0.1f;
+    private const float AttackSpeedMultiplier = 0.9f;
+    private const float RangeUpgradeAmount = 0.15f;
+    private const float ShopHealPercent = 0.25f;
+    private const float MaximumMoveSpeedBonus = 2.1f;
+    private const float MaximumMaxHealthBonus = 120f;
+    private const float MaximumDamageMultiplier = 1.8f;
+    private const float MinimumCooldownMultiplier = 0.6f;
+    private const float MaximumRangeMultiplier = 1.75f;
     private const float PortalBoundaryPadding = 1.5f;
 
     private EnemySpawner enemySpawner;
@@ -67,10 +74,20 @@ public class StageManager : MonoBehaviour
         }
 
         ClearPortals();
+        LootPickup.ClearAll();
         isAwaitingPortalChoice = false;
+        GamePauseManager.EnsureForScene().ResumeAll();
         ui.HideAllPanels();
         ApplyRunDataToPlayer(runManager.Data);
-        ui.UpdateStageHud(runManager.Data.currentRoundIndex, runManager.Data.currentStageType);
+        if (runManager.Data.isNewRun)
+        {
+            // isNewRun is only a one-time full-health initialization flag. It
+            // must be consumed before an in-session return to the main menu,
+            // otherwise Continue would incorrectly heal Stage 1 to full.
+            runManager.Data.isNewRun = false;
+            runManager.SavePlayerState(player);
+        }
+        ui.UpdateStageHud(runManager.Data.currentStageIndex, MaxStageCount, runManager.Data.currentStageType);
         ui.ShowStageMessage(string.Empty);
         PrepareHiddenPortalSlots();
 
@@ -78,12 +95,13 @@ public class StageManager : MonoBehaviour
         {
             GameEvents.ResetGlobalAggro();
             enemySpawner.enabled = false;
-            ui.ShowShop(GetShopChoices());
+            GamePauseManager.EnsureForScene().Pause("Shop");
+            ui.ShowWeaponShop(WeaponCatalog.AllTypes);
             return;
         }
 
         GameEvents.ResetGlobalAggro();
-        enemySpawner.ConfigureStage(runManager.Data.currentStageType, runManager.Data.currentRoundIndex);
+        enemySpawner.ConfigureStage(runManager.Data.currentStageType, runManager.Data.currentStageIndex);
         enemySpawner.enabled = true;
     }
 
@@ -97,12 +115,34 @@ public class StageManager : MonoBehaviour
         isAwaitingPortalChoice = false;
         SetPortalsInteractable(false);
         ClearPortals();
+        LootPickup.ClearAll();
+
+        if (selectedStageType == StageType.End)
+        {
+            CompleteRun();
+            return;
+        }
+
         RunManager runManager = RunManager.EnsureInstance();
         runManager.PrepareNextStage(selectedStageType, player);
 
         // Reuse the same map and rebuild its stage state directly. This avoids
         // reloading the scene and depending on asynchronous runtime setup.
         BeginCurrentStage();
+    }
+
+    private void CompleteRun()
+    {
+        GamePauseManager.Instance?.ResumeAll();
+        GameEvents.ResetGlobalAggro();
+        enemySpawner?.StopCurrentStage();
+        ClearActiveProjectiles();
+        LootPickup.ClearAll();
+        RunManager.EnsureInstance().EndRun();
+
+        ui.HideAllPanels();
+        ui.ShowStageMessage("Run Complete");
+        ui.ShowVictoryMenu();
     }
 
     /// <summary>
@@ -124,6 +164,8 @@ public class StageManager : MonoBehaviour
         GameEvents.ResetGlobalAggro();
         enemySpawner?.StopCurrentStage();
         ClearActiveProjectiles();
+        LootPickup.ClearAll();
+        GamePauseManager.Instance?.ResumeAll();
         RunManager.EnsureInstance().EndRun();
 
         ui.HideAllPanels();
@@ -149,6 +191,8 @@ public class StageManager : MonoBehaviour
         GameEvents.ResetGlobalAggro();
         enemySpawner?.StopCurrentStage();
         ClearActiveProjectiles();
+        LootPickup.ClearAll();
+        GamePauseManager.Instance?.ResumeAll();
 
         Vector2 respawnPosition = MapBoundary.Instance != null
             ? MapBoundary.Instance.GetCenter()
@@ -157,7 +201,7 @@ public class StageManager : MonoBehaviour
         RunManager.EnsureInstance().BeginNewRun();
     }
 
-    public void PurchaseUpgrade(ShopUpgradeType upgrade)
+    public void ApplyLevelUpgrade(ShopUpgradeType upgrade)
     {
         RunManager runManager = RunManager.EnsureInstance();
         RunData data = runManager.Data;
@@ -168,27 +212,72 @@ public class StageManager : MonoBehaviour
                 player.Heal(player.maxHealth * ShopHealPercent);
                 break;
             case ShopUpgradeType.MaxHealth:
-                data.maxHealthBonus += MaxHealthUpgradeAmount;
+                data.maxHealthBonus = Mathf.Min(
+                    MaximumMaxHealthBonus,
+                    data.maxHealthBonus + MaxHealthUpgradeAmount);
                 ApplyRunDataToPlayer(data);
                 break;
             case ShopUpgradeType.MoveSpeed:
-                data.moveSpeedBonus += MoveSpeedUpgradeAmount;
+                data.moveSpeedBonus = Mathf.Min(
+                    MaximumMoveSpeedBonus,
+                    data.moveSpeedBonus + MoveSpeedUpgradeAmount);
                 ApplyRunDataToPlayer(data);
                 break;
             case ShopUpgradeType.WeaponDamage:
-                data.weaponDamageMultiplier += DamageUpgradeAmount;
+                data.weaponDamageMultiplier = Mathf.Min(
+                    MaximumDamageMultiplier,
+                    data.weaponDamageMultiplier + DamageUpgradeAmount);
                 break;
             case ShopUpgradeType.AttackSpeed:
-                data.cooldownMultiplier = Mathf.Max(0.35f, data.cooldownMultiplier * AttackSpeedMultiplier);
+                data.cooldownMultiplier = Mathf.Max(
+                    MinimumCooldownMultiplier,
+                    data.cooldownMultiplier * AttackSpeedMultiplier);
                 break;
             case ShopUpgradeType.AttackRange:
-                data.attackRangeMultiplier += RangeUpgradeAmount;
+                data.attackRangeMultiplier = Mathf.Min(
+                    MaximumRangeMultiplier,
+                    data.attackRangeMultiplier + RangeUpgradeAmount);
                 break;
         }
 
         runManager.SavePlayerState(player);
         runManager.SaveRun();
+        player.GetComponent<PlayerProgression>()?.RefreshHud();
+    }
+
+    public void PurchaseWeapon(WeaponType weaponType)
+    {
+        RunManager runManager = RunManager.EnsureInstance();
+        if (runManager.Data.equippedWeapon == weaponType)
+        {
+            ui.ShowStageMessage("That weapon is already equipped.");
+            return;
+        }
+
+        WeaponDefinition definition = WeaponCatalog.Get(weaponType);
+        PlayerProgression progression = player.GetComponent<PlayerProgression>();
+        if (progression == null || !progression.TrySpendCoins(definition.Price))
+        {
+            ui.ShowStageMessage("Not enough coins for that weapon.");
+            return;
+        }
+
+        runManager.Data.equippedWeapon = weaponType;
+        player.GetComponent<PlayerWeaponSystem>()?.Equip(weaponType);
+        runManager.SavePlayerState(player);
+        FinishShop();
+    }
+
+    public void LeaveShop()
+    {
+        FinishShop();
+    }
+
+    private void FinishShop()
+    {
         ui.HideShop();
+        ui.ShowStageMessage(string.Empty);
+        GamePauseManager.Instance?.Resume("Shop");
         RevealPortalChoices();
     }
 
@@ -196,12 +285,12 @@ public class StageManager : MonoBehaviour
     {
         return upgrade switch
         {
-            ShopUpgradeType.Heal => "Restore 30% Health",
-            ShopUpgradeType.MaxHealth => "+25 Maximum Health",
-            ShopUpgradeType.MoveSpeed => "+0.75 Move Speed",
-            ShopUpgradeType.WeaponDamage => "+20% Weapon Damage",
-            ShopUpgradeType.AttackSpeed => "+15% Attack Speed",
-            ShopUpgradeType.AttackRange => "+25% Attack Range",
+            ShopUpgradeType.Heal => "Restore 25% Health",
+            ShopUpgradeType.MaxHealth => "+15 Maximum Health",
+            ShopUpgradeType.MoveSpeed => "+0.30 Move Speed",
+            ShopUpgradeType.WeaponDamage => "+10% Weapon Damage",
+            ShopUpgradeType.AttackSpeed => "+10% Attack Speed",
+            ShopUpgradeType.AttackRange => "+15% Attack Range",
             _ => upgrade.ToString()
         };
     }
@@ -292,6 +381,19 @@ public class StageManager : MonoBehaviour
     private List<StageType> GetPortalChoices()
     {
         RunData data = RunManager.EnsureInstance().Data;
+
+        // Stage 9 always leads to the dedicated final Boss room. After the
+        // Stage 10 boss is defeated, the same hidden slot becomes the End portal.
+        if (data.currentStageIndex >= MaxStageCount)
+        {
+            return new List<StageType> { StageType.End };
+        }
+
+        if (data.currentStageIndex == MaxStageCount - 1)
+        {
+            return new List<StageType> { StageType.Boss };
+        }
+
         List<StageType> available = new List<StageType> { StageType.Combat };
 
         if (data.currentStageType != StageType.Shop)
@@ -360,6 +462,8 @@ public class StageManager : MonoBehaviour
             StageType.Combat => generationConfig.combatWeight,
             StageType.Shop => generationConfig.shopWeight,
             StageType.Elite => generationConfig.eliteWeight,
+            StageType.Boss => 1f,
+            StageType.End => 1f,
             _ => 1f
         };
     }
@@ -392,6 +496,8 @@ public class StageManager : MonoBehaviour
         player.ApplyRunData(data);
         PlayerMovement movement = player.GetComponent<PlayerMovement>();
         movement?.SetRuntimeSpeedBonus(data.moveSpeedBonus);
+        player.GetComponent<PlayerWeaponSystem>()?.Equip(data.equippedWeapon, false);
+        player.GetComponent<PlayerProgression>()?.RefreshHud();
     }
 
     private void ClearPortals()
@@ -422,8 +528,7 @@ public class StageManager : MonoBehaviour
     private static void ClearActiveProjectiles()
     {
         ProjectileWeaponController[] projectiles = Object.FindObjectsByType<ProjectileWeaponController>(
-            FindObjectsInactive.Exclude,
-            FindObjectsSortMode.None);
+            FindObjectsInactive.Exclude);
 
         foreach (ProjectileWeaponController projectile in projectiles)
         {
@@ -439,6 +544,26 @@ public class StageManager : MonoBehaviour
             else
             {
                 Destroy(projectile.gameObject);
+            }
+        }
+
+        RuntimeWeaponProjectile[] runtimeProjectiles = Object.FindObjectsByType<RuntimeWeaponProjectile>(
+            FindObjectsInactive.Exclude);
+        foreach (RuntimeWeaponProjectile projectile in runtimeProjectiles)
+        {
+            if (projectile != null)
+            {
+                Destroy(projectile.gameObject);
+            }
+        }
+
+        WeaponVisualEffect[] effects = Object.FindObjectsByType<WeaponVisualEffect>(
+            FindObjectsInactive.Exclude);
+        foreach (WeaponVisualEffect effect in effects)
+        {
+            if (effect != null)
+            {
+                Destroy(effect.gameObject);
             }
         }
     }
