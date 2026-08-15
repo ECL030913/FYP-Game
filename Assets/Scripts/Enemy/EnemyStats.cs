@@ -28,11 +28,6 @@ public class EnemyStats : MonoBehaviour, IPoolable
     {
         ResetRuntimeStats();
 
-        if (GetComponent<EnemyAI>() == null)
-        {
-            gameObject.AddComponent<EnemyAI>();
-        }
-
         enemySprite = GetComponent<SpriteRenderer>();
 
         if (GetComponent<EnemyHealthBar>() == null)

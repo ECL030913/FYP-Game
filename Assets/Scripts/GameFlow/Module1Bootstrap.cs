@@ -23,7 +23,7 @@ public static class Module1Bootstrap
 
     private static void InstallForScene(Scene scene)
     {
-        if (scene.name != "Game")
+        if (!StageSceneRouter.IsGameplayScene(scene))
         {
             return;
         }
@@ -50,9 +50,14 @@ public static class Module1Bootstrap
             {
                 player.gameObject.AddComponent<PlayerWeaponSystem>();
             }
+
+            if (player.GetComponent<PlayerInteractionController>() == null)
+            {
+                player.gameObject.AddComponent<PlayerInteractionController>();
+            }
         }
 
-        if (spawner.GetComponent<StageManager>() == null)
+        if (Object.FindAnyObjectByType<StageManager>() == null)
         {
             spawner.gameObject.AddComponent<StageManager>();
         }

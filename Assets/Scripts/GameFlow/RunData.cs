@@ -16,6 +16,8 @@ public class RunData : ScriptableObject
     public int experienceToNextLevel = 30;
     public int coins;
     public WeaponType equippedWeapon = WeaponType.RangedPierce;
+    public bool shopWeaponPurchased;
+    public bool shopPotionPurchased;
 
     [Header("Player State")]
     public float savedPlayerHealth;
@@ -38,6 +40,8 @@ public class RunData : ScriptableObject
         experienceToNextLevel = 30;
         coins = 0;
         equippedWeapon = WeaponType.RangedPierce;
+        shopWeaponPurchased = false;
+        shopPotionPurchased = false;
         savedPlayerHealth = startingHealth;
         isNewRun = true;
         maxHealthBonus = 0f;

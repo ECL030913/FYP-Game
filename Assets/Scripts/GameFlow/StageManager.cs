@@ -1,11 +1,11 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Module 1's procedural director. It listens for a combat wave to finish,
-/// creates constrained portal choices, and reconstructs the next node in the
-/// same arena scene.
+/// creates constrained portal choices, saves the run, and routes the player to
+/// a dedicated scene for the selected stage type.
 /// </summary>
 public class StageManager : MonoBehaviour
 {
@@ -28,9 +28,12 @@ public class StageManager : MonoBehaviour
     private PlayerStats player;
     private Module1Ui ui;
     private StageGenerationConfig generationConfig;
+    private GameplaySceneDefinition sceneDefinition;
+    private ShopSceneController shopSceneController;
     private readonly List<Portal> activePortals = new List<Portal>();
     private readonly List<StageType> pendingPortalChoices = new List<StageType>();
     private bool isAwaitingPortalChoice;
+    private bool isTransitioning;
 
     private void OnEnable()
     {
@@ -49,6 +52,19 @@ public class StageManager : MonoBehaviour
 
         if (runManager.IsRunReady)
         {
+            if (sceneDefinition != null
+                && sceneDefinition.StageType != runManager.Data.currentStageType)
+            {
+                isTransitioning = true;
+                if (enemySpawner != null)
+                {
+                    enemySpawner.enabled = false;
+                }
+
+                StageSceneRouter.LoadStageAsync(runManager.Data.currentStageType);
+                return;
+            }
+
             BeginCurrentStage();
             return;
         }
@@ -58,10 +74,8 @@ public class StageManager : MonoBehaviour
             enemySpawner.enabled = false;
         }
 
-        // The dedicated Menu scene now owns New Game and Continue. If Game is
-        // opened directly without a prepared run, return to the real menu
-        // instead of showing the old runtime placeholder.
-        SceneManager.LoadScene("Menu");
+        // Gameplay scenes require a prepared run from New Game or Continue.
+        StageSceneRouter.LoadMenuAsync();
     }
 
     public void BeginCurrentStage()
@@ -76,8 +90,10 @@ public class StageManager : MonoBehaviour
         ClearPortals();
         LootPickup.ClearAll();
         isAwaitingPortalChoice = false;
+        isTransitioning = false;
         GamePauseManager.EnsureForScene().ResumeAll();
         ui.HideAllPanels();
+        PlacePlayerAtSceneSpawn();
         ApplyRunDataToPlayer(runManager.Data);
         if (runManager.Data.isNewRun)
         {
@@ -94,9 +110,11 @@ public class StageManager : MonoBehaviour
         if (runManager.Data.currentStageType == StageType.Shop)
         {
             GameEvents.ResetGlobalAggro();
-            enemySpawner.enabled = false;
-            GamePauseManager.EnsureForScene().Pause("Shop");
-            ui.ShowWeaponShop(WeaponCatalog.AllTypes);
+            enemySpawner.StopCurrentStage();
+            RevealPortalChoices();
+            shopSceneController = ShopSceneController.EnsureForScene();
+            shopSceneController.Initialize(this, sceneDefinition);
+            ui.ShowStageMessage("Shop: inspect a display or use a portal to continue");
             return;
         }
 
@@ -107,11 +125,24 @@ public class StageManager : MonoBehaviour
 
     public void SelectPortal(StageType selectedStageType)
     {
-        if (!isAwaitingPortalChoice)
+        if (!isAwaitingPortalChoice || isTransitioning)
         {
             return;
         }
 
+        // Validate before mutating or saving the run. Scene loading starts only
+        // after the old stage has finished releasing enemies, projectiles and
+        // pooled objects; starting it earlier can race scene activation against
+        // old-scene cleanup and leave the transition permanently stalled.
+        if (selectedStageType != StageType.End
+            && !StageSceneRouter.CanLoadStage(selectedStageType))
+        {
+            SetPortalsInteractable(true);
+            ui.ShowStageMessage($"The {selectedStageType} scene is unavailable.");
+            return;
+        }
+
+        isTransitioning = true;
         isAwaitingPortalChoice = false;
         SetPortalsInteractable(false);
         ClearPortals();
@@ -125,10 +156,8 @@ public class StageManager : MonoBehaviour
 
         RunManager runManager = RunManager.EnsureInstance();
         runManager.PrepareNextStage(selectedStageType, player);
-
-        // Reuse the same map and rebuild its stage state directly. This avoids
-        // reloading the scene and depending on asynchronous runtime setup.
-        BeginCurrentStage();
+        PrepareForSceneExit();
+        StartCoroutine(LoadStageAfterCleanup(selectedStageType));
     }
 
     private void CompleteRun()
@@ -180,11 +209,18 @@ public class StageManager : MonoBehaviour
     public void RetryFromDeath()
     {
         CacheSceneReferences();
-        if (player == null)
+        if (player == null || isTransitioning)
         {
             return;
         }
 
+        if (!StageSceneRouter.CanLoadStage(StageType.Combat))
+        {
+            ui.ShowStageMessage("The Combat scene is unavailable.");
+            return;
+        }
+
+        isTransitioning = true;
         isAwaitingPortalChoice = false;
         SetPortalsInteractable(false);
         ClearPortals();
@@ -194,11 +230,9 @@ public class StageManager : MonoBehaviour
         LootPickup.ClearAll();
         GamePauseManager.Instance?.ResumeAll();
 
-        Vector2 respawnPosition = MapBoundary.Instance != null
-            ? MapBoundary.Instance.GetCenter()
-            : Vector2.zero;
-        player.ReviveAt(respawnPosition);
         RunManager.EnsureInstance().BeginNewRun();
+        PrepareForSceneExit();
+        StartCoroutine(LoadStageAfterCleanup(StageType.Combat));
     }
 
     public void ApplyLevelUpgrade(ShopUpgradeType upgrade)
@@ -245,40 +279,234 @@ public class StageManager : MonoBehaviour
         player.GetComponent<PlayerProgression>()?.RefreshHud();
     }
 
-    public void PurchaseWeapon(WeaponType weaponType)
+    public void RequestShopPurchase(ShopPedestal pedestal)
+    {
+        if (pedestal == null
+            || isTransitioning
+            || RunManager.Instance == null
+            || RunManager.Instance.Data.currentStageType != StageType.Shop)
+        {
+            return;
+        }
+
+        if (!CanPurchaseShopOffer(pedestal, out string unavailableReason, out _))
+        {
+            ui.ShowStageMessage(unavailableReason);
+            pedestal.RefreshAvailability();
+            return;
+        }
+
+        GetShopOfferPresentation(
+            pedestal,
+            out string title,
+            out string details,
+            out _,
+            out _);
+        GamePauseManager.EnsureForScene().Pause("ShopPurchase");
+        ui.ShowShopPurchaseConfirmation(
+            $"Buy {title}?",
+            details,
+            () => ConfirmShopPurchase(pedestal),
+            CancelShopPurchase);
+    }
+
+    public void GetShopOfferPresentation(
+        ShopPedestal pedestal,
+        out string title,
+        out string details,
+        out string action,
+        out Color actionColour)
+    {
+        RunData data = RunManager.EnsureInstance().Data;
+        if (pedestal.OfferKind == ShopOfferKind.Weapon)
+        {
+            WeaponDefinition definition = WeaponCatalog.Get(pedestal.WeaponType);
+            title = $"{definition.DisplayName}  •  {pedestal.Price} coins";
+            details = $"{definition.Description}\n{BuildEffectiveWeaponStats(definition, data)}\nCurrent coins: {data.coins}";
+        }
+        else
+        {
+            title = $"Health Potion  •  {pedestal.Price} coins";
+            details = $"Restore {pedestal.HealPercent * 100f:0}% of maximum health.\n"
+                + $"Current HP: {player.currentHealth:0} / {player.maxHealth:0}  •  Current coins: {data.coins}";
+        }
+
+        if (CanPurchaseShopOffer(pedestal, out string unavailableReason, out Color unavailableColour))
+        {
+            action = "Press E to buy";
+            actionColour = new Color(0.35f, 1f, 0.5f);
+        }
+        else
+        {
+            action = unavailableReason;
+            actionColour = unavailableColour;
+        }
+    }
+
+    public bool IsShopOfferConsumed(ShopPedestal pedestal)
+    {
+        if (pedestal == null || RunManager.Instance == null)
+        {
+            return true;
+        }
+
+        RunData data = RunManager.Instance.Data;
+        return pedestal.OfferKind == ShopOfferKind.Weapon
+            ? data.shopWeaponPurchased || data.equippedWeapon == pedestal.WeaponType
+            : data.shopPotionPurchased;
+    }
+
+    private void ConfirmShopPurchase(ShopPedestal pedestal)
+    {
+        string message;
+        bool purchased = pedestal.OfferKind == ShopOfferKind.Weapon
+            ? TryCompleteWeaponPurchase(pedestal.WeaponType, pedestal.Price, out message)
+            : TryCompletePotionPurchase(pedestal.Price, pedestal.HealPercent, out message);
+
+        GamePauseManager.Instance?.Resume("ShopPurchase");
+        ui.ShowStageMessage(message);
+        shopSceneController?.RefreshAll();
+        if (purchased)
+        {
+            player.GetComponent<PlayerProgression>()?.RefreshHud();
+        }
+    }
+
+    private void CancelShopPurchase()
+    {
+        GamePauseManager.Instance?.Resume("ShopPurchase");
+        ui.ShowStageMessage(string.Empty);
+        shopSceneController?.RefreshAll();
+    }
+
+    private bool TryCompleteWeaponPurchase(WeaponType weaponType, int price, out string message)
     {
         RunManager runManager = RunManager.EnsureInstance();
-        if (runManager.Data.equippedWeapon == weaponType)
+        RunData data = runManager.Data;
+        if (data.shopWeaponPurchased)
         {
-            ui.ShowStageMessage("That weapon is already equipped.");
-            return;
+            message = "A weapon has already been purchased in this Shop.";
+            return false;
         }
 
-        WeaponDefinition definition = WeaponCatalog.Get(weaponType);
+        if (data.equippedWeapon == weaponType)
+        {
+            message = "That weapon is already equipped.";
+            return false;
+        }
+
         PlayerProgression progression = player.GetComponent<PlayerProgression>();
-        if (progression == null || !progression.TrySpendCoins(definition.Price))
+        if (progression == null || !progression.TrySpendCoins(price))
         {
-            ui.ShowStageMessage("Not enough coins for that weapon.");
-            return;
+            message = "Not enough coins for that weapon.";
+            return false;
         }
 
-        runManager.Data.equippedWeapon = weaponType;
+        data.equippedWeapon = weaponType;
+        data.shopWeaponPurchased = true;
         player.GetComponent<PlayerWeaponSystem>()?.Equip(weaponType);
         runManager.SavePlayerState(player);
-        FinishShop();
+        message = $"Equipped {WeaponCatalog.Get(weaponType).DisplayName}.";
+        return true;
     }
 
-    public void LeaveShop()
+    private bool TryCompletePotionPurchase(int price, float healPercent, out string message)
     {
-        FinishShop();
+        RunManager runManager = RunManager.EnsureInstance();
+        RunData data = runManager.Data;
+        if (data.shopPotionPurchased)
+        {
+            message = "The potion has already been purchased in this Shop.";
+            return false;
+        }
+
+        if (player.currentHealth >= player.maxHealth - 0.01f)
+        {
+            message = "Health is already full.";
+            return false;
+        }
+
+        PlayerProgression progression = player.GetComponent<PlayerProgression>();
+        if (progression == null || !progression.TrySpendCoins(price))
+        {
+            message = "Not enough coins for the potion.";
+            return false;
+        }
+
+        player.Heal(player.maxHealth * Mathf.Clamp01(healPercent));
+        data.shopPotionPurchased = true;
+        runManager.SavePlayerState(player);
+        message = "Health restored.";
+        return true;
     }
 
-    private void FinishShop()
+    private bool CanPurchaseShopOffer(
+        ShopPedestal pedestal,
+        out string unavailableReason,
+        out Color unavailableColour)
     {
-        ui.HideShop();
-        ui.ShowStageMessage(string.Empty);
-        GamePauseManager.Instance?.Resume("Shop");
-        RevealPortalChoices();
+        RunData data = RunManager.EnsureInstance().Data;
+        unavailableColour = new Color(1f, 0.35f, 0.32f);
+
+        if (pedestal.OfferKind == ShopOfferKind.Weapon)
+        {
+            if (data.shopWeaponPurchased)
+            {
+                unavailableReason = "Weapon purchase already used in this Shop";
+                unavailableColour = new Color(0.68f, 0.72f, 0.78f);
+                return false;
+            }
+
+            if (data.equippedWeapon == pedestal.WeaponType)
+            {
+                unavailableReason = "Currently equipped";
+                unavailableColour = new Color(0.68f, 0.82f, 1f);
+                return false;
+            }
+        }
+        else
+        {
+            if (data.shopPotionPurchased)
+            {
+                unavailableReason = "Potion already purchased in this Shop";
+                unavailableColour = new Color(0.68f, 0.72f, 0.78f);
+                return false;
+            }
+
+            if (player == null || player.currentHealth >= player.maxHealth - 0.01f)
+            {
+                unavailableReason = "Health is already full";
+                unavailableColour = new Color(0.68f, 0.82f, 1f);
+                return false;
+            }
+        }
+
+        if (data.coins < pedestal.Price)
+        {
+            unavailableReason = $"Not enough coins ({data.coins} / {pedestal.Price})";
+            return false;
+        }
+
+        unavailableReason = string.Empty;
+        return true;
+    }
+
+    private static string BuildEffectiveWeaponStats(WeaponDefinition definition, RunData data)
+    {
+        float damage = definition.Damage * data.weaponDamageMultiplier;
+        float cooldown = definition.Cooldown * data.cooldownMultiplier;
+        float range = definition.Range * data.attackRangeMultiplier;
+        float area = definition.AreaRadius * data.attackRangeMultiplier;
+        string common = $"Damage {damage:0.0}  •  Cooldown {cooldown:0.00}s";
+
+        return definition.Type switch
+        {
+            WeaponType.MeleeArea => $"{common}  •  Radius {area:0.00}",
+            WeaponType.MeleePierce => $"{common}  •  Reach {range:0.00}  •  Pierce {definition.Pierce}",
+            WeaponType.RangedPierce => $"{common}  •  Range {range:0.0}  •  Pierce {definition.Pierce}  •  Speed {definition.ProjectileSpeed:0}",
+            WeaponType.RangedArea => $"{common}  •  Range {range:0.0}  •  Blast {area:0.00}  •  Speed {definition.ProjectileSpeed:0}",
+            _ => common
+        };
     }
 
     public string GetUpgradeLabel(ShopUpgradeType upgrade)
@@ -331,7 +559,9 @@ public class StageManager : MonoBehaviour
 
         for (int i = 0; i < pendingPortalChoices.Count; i++)
         {
-            Vector2 portalPosition = GetPortalSlotPosition(center, i, pendingPortalChoices.Count);
+            Vector2 portalPosition = sceneDefinition != null
+                ? sceneDefinition.GetPortalPosition(i, pendingPortalChoices.Count)
+                : GetPortalSlotPosition(center, i, pendingPortalChoices.Count);
             if (MapBoundary.Instance != null)
             {
                 portalPosition = MapBoundary.Instance.ClampPosition(portalPosition, PortalBoundaryPadding);
@@ -468,29 +698,6 @@ public class StageManager : MonoBehaviour
         };
     }
 
-    private List<ShopUpgradeType> GetShopChoices()
-    {
-        List<ShopUpgradeType> pool = new List<ShopUpgradeType>
-        {
-            ShopUpgradeType.Heal,
-            ShopUpgradeType.MaxHealth,
-            ShopUpgradeType.MoveSpeed,
-            ShopUpgradeType.WeaponDamage,
-            ShopUpgradeType.AttackSpeed,
-            ShopUpgradeType.AttackRange
-        };
-
-        List<ShopUpgradeType> choices = new List<ShopUpgradeType>();
-        while (choices.Count < 3)
-        {
-            int index = Random.Range(0, pool.Count);
-            choices.Add(pool[index]);
-            pool.RemoveAt(index);
-        }
-
-        return choices;
-    }
-
     private void ApplyRunDataToPlayer(RunData data)
     {
         player.ApplyRunData(data);
@@ -498,6 +705,64 @@ public class StageManager : MonoBehaviour
         movement?.SetRuntimeSpeedBonus(data.moveSpeedBonus);
         player.GetComponent<PlayerWeaponSystem>()?.Equip(data.equippedWeapon, false);
         player.GetComponent<PlayerProgression>()?.RefreshHud();
+    }
+
+    private void PlacePlayerAtSceneSpawn()
+    {
+        if (player == null || sceneDefinition == null)
+        {
+            return;
+        }
+
+        Vector2 spawnPosition = sceneDefinition.PlayerSpawnPosition;
+        Rigidbody2D body = player.GetComponent<Rigidbody2D>();
+        if (body != null)
+        {
+            body.position = spawnPosition;
+            body.linearVelocity = Vector2.zero;
+        }
+        else
+        {
+            player.transform.position = spawnPosition;
+        }
+    }
+
+    private void PrepareForSceneExit()
+    {
+        GamePauseManager.Instance?.ResumeAll();
+        GameEvents.ResetGlobalAggro();
+        enemySpawner?.StopCurrentStage();
+        ClearActiveProjectiles();
+        LootPickup.ClearAll();
+        ui?.HideAllPanels();
+
+        PlayerMovement movement = player != null
+            ? player.GetComponent<PlayerMovement>()
+            : null;
+        if (movement != null)
+        {
+            movement.enabled = false;
+        }
+    }
+
+    private IEnumerator LoadStageAfterCleanup(StageType stageType)
+    {
+        // Destroy() and pool releases complete at the end of the current frame.
+        // Waiting one frame keeps those operations out of the scene loader's
+        // activation/unload phase.
+        yield return null;
+
+        AsyncOperation operation = StageSceneRouter.LoadStageAsync(stageType);
+        if (operation != null)
+        {
+            yield break;
+        }
+
+        // CanLoadStage was checked before the transition, so this is only an
+        // unexpected loader failure. Return to Menu rather than leaving the
+        // player disabled in a scene whose run data already points elsewhere.
+        Debug.LogError($"Stage transition to {stageType} could not start.");
+        StageSceneRouter.LoadMenuAsync();
     }
 
     private void ClearPortals()
@@ -573,6 +838,7 @@ public class StageManager : MonoBehaviour
         enemySpawner ??= FindAnyObjectByType<EnemySpawner>();
         player ??= FindAnyObjectByType<PlayerStats>();
         ui ??= Module1Ui.EnsureForScene();
+        sceneDefinition ??= FindAnyObjectByType<GameplaySceneDefinition>();
         generationConfig ??= Resources.Load<StageGenerationConfig>("StageGenerationConfig");
 
         if (generationConfig == null)

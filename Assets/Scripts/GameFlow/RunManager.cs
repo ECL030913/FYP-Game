@@ -21,6 +21,8 @@ public class RunManager : MonoBehaviour
         public int experienceToNextLevel;
         public int coins;
         public int equippedWeapon;
+        public bool shopWeaponPurchased;
+        public bool shopPotionPurchased;
         public float savedPlayerHealth;
         public float maxHealthBonus;
         public float moveSpeedBonus;
@@ -73,8 +75,6 @@ public class RunManager : MonoBehaviour
         HasSavedRun = true;
         IsRunReady = true;
         SaveRun();
-
-        FindAnyObjectByType<StageManager>()?.BeginCurrentStage();
     }
 
     public void ContinueRun()
@@ -86,7 +86,6 @@ public class RunManager : MonoBehaviour
         }
 
         IsRunReady = true;
-        FindAnyObjectByType<StageManager>()?.BeginCurrentStage();
     }
 
     public void SavePlayerState(PlayerStats player)
@@ -141,6 +140,11 @@ public class RunManager : MonoBehaviour
         }
 
         Data.currentStageType = nextStageType;
+        if (nextStageType == StageType.Shop)
+        {
+            Data.shopWeaponPurchased = false;
+            Data.shopPotionPurchased = false;
+        }
 
         if (nextStageType == StageType.Elite)
         {
@@ -174,6 +178,8 @@ public class RunManager : MonoBehaviour
             experienceToNextLevel = Data.experienceToNextLevel,
             coins = Data.coins,
             equippedWeapon = (int)Data.equippedWeapon,
+            shopWeaponPurchased = Data.shopWeaponPurchased,
+            shopPotionPurchased = Data.shopPotionPurchased,
             savedPlayerHealth = Data.savedPlayerHealth,
             maxHealthBonus = Data.maxHealthBonus,
             moveSpeedBonus = Data.moveSpeedBonus,
@@ -241,6 +247,8 @@ public class RunManager : MonoBehaviour
                 && Enum.IsDefined(typeof(WeaponType), save.equippedWeapon)
                 ? (WeaponType)save.equippedWeapon
                 : WeaponType.RangedPierce;
+            Data.shopWeaponPurchased = save.shopWeaponPurchased;
+            Data.shopPotionPurchased = save.shopPotionPurchased;
             Data.savedPlayerHealth = Mathf.Max(0f, save.savedPlayerHealth);
             Data.maxHealthBonus = Mathf.Clamp(save.maxHealthBonus, 0f, 120f);
             Data.moveSpeedBonus = Mathf.Clamp(save.moveSpeedBonus, 0f, 2.1f);

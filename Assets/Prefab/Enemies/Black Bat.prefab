@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 7524851235136537377}
   - component: {fileID: 6883714603502917626}
   - component: {fileID: 8211191280188735775}
+  - component: {fileID: 1284411952762398204}
   m_Layer: 0
   m_Name: Black Bat
   m_TagString: Enemy
@@ -189,3 +190,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnemyStats
   enemyData: {fileID: 11400000, guid: 8175f43cf3edc8f4f9046dd167e7d89e, type: 2}
+  hitFlashDuration: 0.15
+  hitFlashRate: 24
+--- !u!114 &1284411952762398204
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7486660345575474478}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a80f93a41bf4a79990f4ec96ed3a04e, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyAI

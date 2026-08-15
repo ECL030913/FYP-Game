@@ -4,6 +4,7 @@ using UnityEngine;
 public class GamePauseManager : MonoBehaviour
 {
     private readonly HashSet<string> pauseReasons = new HashSet<string>();
+    private int suppressEscapeThroughFrame = -1;
 
     public static GamePauseManager Instance { get; private set; }
     public static bool IsPaused => Instance != null && Instance.pauseReasons.Count > 0;
@@ -34,6 +35,14 @@ public class GamePauseManager : MonoBehaviour
     private void Update()
     {
         if (!Input.GetKeyDown(KeyCode.Escape))
+        {
+            return;
+        }
+
+        // Another UI may consume Escape earlier in the same frame (for
+        // example cancelling a Shop purchase). Script Update order is not
+        // deterministic, so do not let that same key press open PauseMenu.
+        if (Time.frameCount <= suppressEscapeThroughFrame)
         {
             return;
         }
@@ -86,6 +95,13 @@ public class GamePauseManager : MonoBehaviour
     {
         Module1Ui.EnsureForScene().HidePauseMenu();
         Resume("PauseMenu");
+    }
+
+    public void SuppressEscapeForCurrentFrame()
+    {
+        suppressEscapeThroughFrame = Mathf.Max(
+            suppressEscapeThroughFrame,
+            Time.frameCount);
     }
 
     public void ResumeAll()

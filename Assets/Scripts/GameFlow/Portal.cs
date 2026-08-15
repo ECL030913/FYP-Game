@@ -7,7 +7,7 @@ using UnityEngine;
 /// frame, a moving energy field, and an icon. Only the latter two scale during
 /// reveal, so the frame can never appear to grow or wobble.
 /// </summary>
-public class Portal : MonoBehaviour
+public class Portal : MonoBehaviour, IPlayerInteractable
 {
     private const float PortalPixelsPerUnit = 256f;
     private const float RevealDuration = 0.7f;
@@ -20,8 +20,8 @@ public class Portal : MonoBehaviour
     private StageType stageType;
     private StageManager stageManager;
     private bool selected = true;
-    private bool playerNearby;
     private CircleCollider2D interactionTrigger;
+    private PlayerInteractionController registeredController;
     private SpriteRenderer frameRenderer;
     private SpriteRenderer backdropRenderer;
     private SpriteRenderer energyRenderer;
@@ -32,6 +32,12 @@ public class Portal : MonoBehaviour
     private TextMesh label;
     private Sprite[] energyFrames;
     private Sprite[] iconFrames;
+
+    public Transform InteractionTransform => transform;
+    public bool IsInteractionAvailable => isActiveAndEnabled
+        && !selected
+        && interactionTrigger != null
+        && interactionTrigger.enabled;
 
     public static Portal CreateHidden(StageType stageType, Vector2 position, StageManager stageManager)
     {
@@ -66,27 +72,13 @@ public class Portal : MonoBehaviour
         return portal;
     }
 
-    private void Update()
-    {
-        if (selected || !playerNearby || Time.timeScale <= 0f)
-        {
-            return;
-        }
-
-        if (Input.GetKeyDown(KeyCode.E))
-        {
-            selected = true;
-            interactionTrigger.enabled = false;
-            stageManager.SelectPortal(stageType);
-        }
-    }
-
     public void Reveal()
     {
         StopAllCoroutines();
         gameObject.name = $"{stageType} Portal";
         selected = true;
-        playerNearby = false;
+        registeredController?.Unregister(this);
+        registeredController = null;
         interactionTrigger.enabled = false;
         SetLabelVisible(false);
 
@@ -119,9 +111,29 @@ public class Portal : MonoBehaviour
 
         if (!interactable)
         {
-            playerNearby = false;
+            registeredController?.Unregister(this);
+            registeredController = null;
             SetPortalLabel(false);
         }
+    }
+
+    public void SetInteractionFocus(bool focused)
+    {
+        SetPortalLabel(focused);
+    }
+
+    public void Interact(PlayerInteractionController controller)
+    {
+        if (!IsInteractionAvailable)
+        {
+            return;
+        }
+
+        selected = true;
+        interactionTrigger.enabled = false;
+        controller?.Unregister(this);
+        registeredController = null;
+        stageManager.SelectPortal(stageType);
     }
 
     private IEnumerator PlayRevealAndIdle()
@@ -179,8 +191,8 @@ public class Portal : MonoBehaviour
             return;
         }
 
-        playerNearby = true;
-        SetPortalLabel(true);
+        registeredController = other.GetComponent<PlayerInteractionController>();
+        registeredController?.Register(this);
     }
 
     private void OnTriggerExit2D(Collider2D other)
@@ -190,8 +202,18 @@ public class Portal : MonoBehaviour
             return;
         }
 
-        playerNearby = false;
-        SetPortalLabel(false);
+        PlayerInteractionController controller = other.GetComponent<PlayerInteractionController>();
+        controller?.Unregister(this);
+        if (registeredController == controller)
+        {
+            registeredController = null;
+        }
+    }
+
+    private void OnDisable()
+    {
+        registeredController?.Unregister(this);
+        registeredController = null;
     }
 
     private void CreateVisualLayers()

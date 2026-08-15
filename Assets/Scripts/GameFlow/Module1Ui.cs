@@ -1,13 +1,10 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
-/// Small runtime UI for the prototype stage: run selection, current node, and
-/// the three free Shop upgrades. It uses Unity's built-in UI so no art assets
-/// are required at this stage.
+/// Runtime HUD and modal UI shared by every gameplay scene.
 /// </summary>
 public class Module1Ui : MonoBehaviour
 {
@@ -15,7 +12,8 @@ public class Module1Ui : MonoBehaviour
     private Text roundText;
     private Text messageText;
     private Text progressText;
-    private GameObject shopPanel;
+    private GameObject shopItemDetailsPanel;
+    private GameObject shopPurchasePanel;
     private GameObject levelUpPanel;
     private GameObject pausePanel;
     private GameObject deathPanel;
@@ -24,6 +22,9 @@ public class Module1Ui : MonoBehaviour
     private Slider healthBarSlider;
     private Text healthValueText;
     private HealthUIDisplay healthUIDisplay;
+    private Action pendingShopPurchase;
+    private Action pendingShopCancel;
+    private int shopPurchaseInputArmFrame;
 
     public static Module1Ui EnsureForScene()
     {
@@ -51,6 +52,25 @@ public class Module1Ui : MonoBehaviour
         CreateHud();
     }
 
+    private void Update()
+    {
+        if (shopPurchasePanel == null
+            || !shopPurchasePanel.activeSelf
+            || Time.frameCount < shopPurchaseInputArmFrame)
+        {
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Return))
+        {
+            ConfirmPendingShopPurchase();
+        }
+        else if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            CancelPendingShopPurchase();
+        }
+    }
+
     public void UpdateStageHud(int stageIndex, int maximumStageCount, StageType stageType)
     {
         EnsureHud();
@@ -70,60 +90,116 @@ public class Module1Ui : MonoBehaviour
         }
     }
 
-    public void ShowShop(IReadOnlyList<ShopUpgradeType> upgrades)
+    public void ShowShopItemDetails(
+        string title,
+        string details,
+        string action,
+        Color actionColour)
     {
-        if (shopPanel == null)
+        if (shopItemDetailsPanel == null)
         {
-            shopPanel = CreatePanel("Shop", new Vector2(500f, 360f));
+            shopItemDetailsPanel = CreatePanel("Shop Item Details", new Vector2(760f, 210f));
+            RectTransform rect = shopItemDetailsPanel.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0f);
+            rect.anchorMax = new Vector2(0.5f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.anchoredPosition = new Vector2(0f, 28f);
+
+            Image background = shopItemDetailsPanel.GetComponent<Image>();
+            background.color = new Color(0.025f, 0.045f, 0.09f, 0.96f);
+            Outline outline = shopItemDetailsPanel.AddComponent<Outline>();
+            outline.effectColor = new Color(0.15f, 0.75f, 1f, 0.95f);
+            outline.effectDistance = new Vector2(3f, -3f);
         }
 
-        RemoveChildren(shopPanel.transform);
-        shopPanel.SetActive(true);
-        CreateText(shopPanel.transform, "Shop - Choose One Free Upgrade", 26, TextAnchor.MiddleCenter, 48f);
-        CreateText(shopPanel.transform, "No enemies spawn in this room.", 16, TextAnchor.MiddleCenter, 32f);
+        RemoveChildren(shopItemDetailsPanel.transform);
+        shopItemDetailsPanel.SetActive(true);
+        CreateColoredText(
+            shopItemDetailsPanel.transform,
+            title,
+            27,
+            TextAnchor.MiddleCenter,
+            42f,
+            new Color(0.85f, 0.96f, 1f));
+        CreateColoredText(
+            shopItemDetailsPanel.transform,
+            details,
+            18,
+            TextAnchor.MiddleCenter,
+            78f,
+            Color.white);
+        CreateColoredText(
+            shopItemDetailsPanel.transform,
+            action,
+            21,
+            TextAnchor.MiddleCenter,
+            42f,
+            actionColour);
+    }
 
-        StageManager stageManager = FindAnyObjectByType<StageManager>();
-        foreach (ShopUpgradeType upgrade in upgrades)
+    public void HideShopItemDetails()
+    {
+        if (shopItemDetailsPanel != null)
         {
-            ShopUpgradeType capturedUpgrade = upgrade;
-            string label = stageManager != null ? stageManager.GetUpgradeLabel(upgrade) : upgrade.ToString();
-            CreateButton(shopPanel.transform, label, () => stageManager?.ApplyLevelUpgrade(capturedUpgrade));
+            shopItemDetailsPanel.SetActive(false);
         }
     }
 
-    public void ShowWeaponShop(IReadOnlyList<WeaponType> weaponTypes)
+    public void ShowShopPurchaseConfirmation(
+        string title,
+        string details,
+        Action confirm,
+        Action cancel)
     {
-        if (shopPanel == null)
+        if (shopPurchasePanel == null)
         {
-            shopPanel = CreatePanel("Weapon Shop", new Vector2(680f, 620f));
+            shopPurchasePanel = CreatePanel("Shop Purchase Confirmation", new Vector2(590f, 330f));
+            Image background = shopPurchasePanel.GetComponent<Image>();
+            background.color = new Color(0.025f, 0.04f, 0.075f, 0.98f);
+            Outline outline = shopPurchasePanel.AddComponent<Outline>();
+            outline.effectColor = new Color(0.25f, 0.8f, 1f, 1f);
+            outline.effectDistance = new Vector2(4f, -4f);
         }
 
-        RemoveChildren(shopPanel.transform);
-        shopPanel.SetActive(true);
+        pendingShopPurchase = confirm;
+        pendingShopCancel = cancel;
+        shopPurchaseInputArmFrame = Time.frameCount + 1;
+        RemoveChildren(shopPurchasePanel.transform);
+        shopPurchasePanel.SetActive(true);
+        CreateColoredText(
+            shopPurchasePanel.transform,
+            title,
+            29,
+            TextAnchor.MiddleCenter,
+            52f,
+            new Color(0.85f, 0.96f, 1f));
+        CreateColoredText(
+            shopPurchasePanel.transform,
+            details,
+            18,
+            TextAnchor.MiddleCenter,
+            84f,
+            Color.white);
+        CreateColoredText(
+            shopPurchasePanel.transform,
+            "Press E again to confirm, or Esc to cancel",
+            18,
+            TextAnchor.MiddleCenter,
+            38f,
+            new Color(1f, 0.86f, 0.28f));
+        CreateButton(shopPurchasePanel.transform, "Confirm Purchase", ConfirmPendingShopPurchase, 48f);
+        CreateButton(shopPurchasePanel.transform, "Cancel", CancelPendingShopPurchase, 48f);
+    }
 
-        RunData data = RunManager.EnsureInstance().Data;
-        StageManager stageManager = FindAnyObjectByType<StageManager>();
-        CreateText(shopPanel.transform, $"Weapon Shop - Coins: {data.coins}", 28, TextAnchor.MiddleCenter, 50f);
-        CreateText(shopPanel.transform, "Choose one weapon or leave without buying.", 17, TextAnchor.MiddleCenter, 34f);
-
-        foreach (WeaponType weaponType in weaponTypes)
+    public void HideShopPurchaseConfirmation()
+    {
+        if (shopPurchasePanel != null)
         {
-            WeaponType capturedType = weaponType;
-            WeaponDefinition definition = WeaponCatalog.Get(weaponType);
-            bool equipped = data.equippedWeapon == weaponType;
-            bool affordable = data.coins >= definition.Price;
-            string state = equipped ? " [EQUIPPED]" : affordable ? string.Empty : " [NOT ENOUGH COINS]";
-            string label = $"{definition.DisplayName} - {definition.Price} coins{state}\n{WeaponCatalog.GetStatsText(weaponType)}\n{definition.Description}";
-            Button button = CreateButton(
-                shopPanel.transform,
-                label,
-                () => stageManager?.PurchaseWeapon(capturedType),
-                84f);
-            AddButtonIcon(button, WeaponCatalog.GetIcon(weaponType));
-            button.interactable = !equipped && affordable;
+            shopPurchasePanel.SetActive(false);
         }
 
-        CreateButton(shopPanel.transform, "Leave Shop (No Purchase)", () => stageManager?.LeaveShop(), 52f);
+        pendingShopPurchase = null;
+        pendingShopCancel = null;
     }
 
     public void ShowLevelUp(IReadOnlyList<ShopUpgradeType> upgrades)
@@ -209,17 +285,10 @@ public class Module1Ui : MonoBehaviour
         CreateButton(victoryPanel.transform, "Quit Game", QuitGame);
     }
 
-    public void HideShop()
-    {
-        if (shopPanel != null)
-        {
-            shopPanel.SetActive(false);
-        }
-    }
-
     public void HideAllPanels()
     {
-        HideShop();
+        HideShopItemDetails();
+        HideShopPurchaseConfirmation();
         HideLevelUp();
         HidePauseMenu();
 
@@ -433,6 +502,45 @@ public class Module1Ui : MonoBehaviour
         textObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
     }
 
+    private Text CreateColoredText(
+        Transform parent,
+        string value,
+        int fontSize,
+        TextAnchor alignment,
+        float preferredHeight,
+        Color colour)
+    {
+        GameObject textObject = new GameObject("Text", typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+        textObject.transform.SetParent(parent, false);
+
+        Text text = textObject.GetComponent<Text>();
+        text.font = font;
+        text.text = value;
+        text.fontSize = fontSize;
+        text.fontStyle = FontStyle.Bold;
+        text.alignment = alignment;
+        text.color = colour;
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        textObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
+        return text;
+    }
+
+    private void ConfirmPendingShopPurchase()
+    {
+        Action confirm = pendingShopPurchase;
+        HideShopPurchaseConfirmation();
+        confirm?.Invoke();
+    }
+
+    private void CancelPendingShopPurchase()
+    {
+        Action cancel = pendingShopCancel;
+        GamePauseManager.Instance?.SuppressEscapeForCurrentFrame();
+        HideShopPurchaseConfirmation();
+        cancel?.Invoke();
+    }
+
     private Button CreateButton(Transform parent, string label, Action onClick, float preferredHeight = 46f)
     {
         GameObject buttonObject = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
@@ -465,36 +573,6 @@ public class Module1Ui : MonoBehaviour
         return button;
     }
 
-    private static void AddButtonIcon(Button button, Sprite sprite)
-    {
-        if (button == null || sprite == null)
-        {
-            return;
-        }
-
-        Transform labelTransform = button.transform.Find("Label");
-        if (labelTransform != null)
-        {
-            RectTransform labelRect = labelTransform.GetComponent<RectTransform>();
-            labelRect.offsetMin = new Vector2(78f, 0f);
-            labelRect.offsetMax = new Vector2(-8f, 0f);
-        }
-
-        GameObject iconObject = new GameObject("Weapon Icon", typeof(RectTransform), typeof(Image));
-        iconObject.transform.SetParent(button.transform, false);
-        RectTransform iconRect = iconObject.GetComponent<RectTransform>();
-        iconRect.anchorMin = new Vector2(0f, 0.5f);
-        iconRect.anchorMax = new Vector2(0f, 0.5f);
-        iconRect.pivot = new Vector2(0.5f, 0.5f);
-        iconRect.anchoredPosition = new Vector2(40f, 0f);
-        iconRect.sizeDelta = new Vector2(66f, 66f);
-
-        Image iconImage = iconObject.GetComponent<Image>();
-        iconImage.sprite = sprite;
-        iconImage.preserveAspect = true;
-        iconImage.raycastTarget = false;
-    }
-
     private static void QuitGame()
     {
         GamePauseManager.Instance?.ResumeAll();
@@ -511,7 +589,7 @@ public class Module1Ui : MonoBehaviour
         RunManager.Instance?.SavePlayerState(player);
         RunManager.Instance?.SaveRun();
         GamePauseManager.Instance?.ResumeAll();
-        SceneManager.LoadScene("Menu");
+        StageSceneRouter.LoadMenuAsync();
     }
 
     private static void RemoveChildren(Transform parent)

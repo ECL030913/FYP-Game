@@ -23,6 +23,14 @@ public class ObjectPoolManager : MonoBehaviour
         Instance = this;
     }
 
+    private void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+    }
+
     public GameObject GetObject(GameObject prefab, Vector3 position, Quaternion rotation)
     {
         if (!pools.ContainsKey(prefab))

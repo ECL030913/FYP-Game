@@ -18,11 +18,23 @@ MonoBehaviour:
   m_PlatformId: 4e3c793746204150860bf175a9a41a05
   m_PlatformBuildProfile:
     rid: 3736700652349292544
-  m_OverrideGlobalSceneList: 1
+  m_OverrideGlobalSceneList: 0
   m_Scenes:
   - m_enabled: 1
-    m_path: Assets/Scenes/Game.unity
-    m_guid: 8c9cfa26abfee488c85f1582747f6a02
+    m_path: Assets/Scenes/Menu.unity
+    m_guid: 54101694decc1234194496fa258e2657
+  - m_enabled: 1
+    m_path: Assets/Scenes/Combat.unity
+    m_guid: 0b0198a1fb361b249824876193f3ccba
+  - m_enabled: 1
+    m_path: Assets/Scenes/Elite.unity
+    m_guid: 16522c52c7d0b234080502c910311d54
+  - m_enabled: 1
+    m_path: Assets/Scenes/Boss.unity
+    m_guid: a015e4060226955488d2ea4a7ec57781
+  - m_enabled: 1
+    m_path: Assets/Scenes/Shop.unity
+    m_guid: 745afd4df6cbc1e418e746a00a250ef0
   m_HasScriptingDefines: 0
   m_ScriptingDefines: []
   m_PlayerSettingsYaml:

@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.SceneManagement;
 using TMPro;
 using System;
 using System.IO;
@@ -24,6 +23,7 @@ public class MainMenuController : MonoBehaviour
     [SerializeField] private Button BtnContinue;
     [SerializeField] private TMP_Text SaveSlotText;
     [SerializeField] private Button BtnQuit;
+    private bool isLoadingStage;
 
     private string SavePath => Path.Combine(Application.persistentDataPath, "module1_run_save.json");
 
@@ -41,14 +41,52 @@ public class MainMenuController : MonoBehaviour
 
     private void StartNewGame()
     {
+        if (isLoadingStage)
+        {
+            return;
+        }
+
+        if (!StageSceneRouter.CanLoadStage(StageType.Combat))
+        {
+            SaveSlotText.text = "Combat scene is unavailable";
+            return;
+        }
+
+        isLoadingStage = true;
+        SetMenuButtonsInteractable(false);
         RunManager.EnsureInstance().BeginNewRun();
-        SceneManager.LoadScene("Game");
+        if (StageSceneRouter.LoadStageAsync(StageType.Combat) == null)
+        {
+            isLoadingStage = false;
+            SetMenuButtonsInteractable(true);
+            SaveSlotText.text = "Could not load Combat";
+        }
     }
 
     private void ContinueGame()
     {
-        RunManager.EnsureInstance().ContinueRun();
-        SceneManager.LoadScene("Game");
+        if (isLoadingStage)
+        {
+            return;
+        }
+
+        RunManager runManager = RunManager.EnsureInstance();
+        runManager.ContinueRun();
+        StageType stageType = runManager.Data.currentStageType;
+        if (!StageSceneRouter.CanLoadStage(stageType))
+        {
+            SaveSlotText.text = $"{stageType} scene is unavailable";
+            return;
+        }
+
+        isLoadingStage = true;
+        SetMenuButtonsInteractable(false);
+        if (StageSceneRouter.LoadStageAsync(stageType) == null)
+        {
+            isLoadingStage = false;
+            SetMenuButtonsInteractable(true);
+            SaveSlotText.text = $"Could not load {stageType}";
+        }
     }
 
     private void QuitGame()
@@ -101,5 +139,12 @@ public class MainMenuController : MonoBehaviour
             default:
                 return "Combat";
         }
+    }
+
+    private void SetMenuButtonsInteractable(bool interactable)
+    {
+        BtnNewGame.interactable = interactable;
+        BtnContinue.interactable = interactable && RunManager.EnsureInstance().HasSavedRun;
+        BtnQuit.interactable = interactable;
     }
 }

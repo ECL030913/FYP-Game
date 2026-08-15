@@ -7,7 +7,7 @@ using UnityEngine;
 public class EnemyAI : MonoBehaviour
 {
     private EnemyState currentState;
-    private EnemyMovement movementExecutor;
+    private IEnemyMotor movementExecutor;
     private EnemyScriptableObject enemyData;
     private Transform player;
 
@@ -16,8 +16,13 @@ public class EnemyAI : MonoBehaviour
 
     private void Awake()
     {
-        movementExecutor = GetComponent<EnemyMovement>();
-        enemyData = movementExecutor != null ? movementExecutor.enemyData : GetComponent<EnemyStats>()?.enemyData;
+        movementExecutor = GetComponent<IEnemyMotor>();
+        enemyData = movementExecutor?.EnemyData ?? GetComponent<EnemyStats>()?.enemyData;
+
+        if (movementExecutor == null)
+        {
+            Debug.LogError($"{name}: EnemyAI requires a component implementing IEnemyMotor.", this);
+        }
     }
 
     private void OnEnable()
@@ -51,7 +56,7 @@ public class EnemyAI : MonoBehaviour
     {
         if (movementExecutor != null)
         {
-            movementExecutor.enabled = value;
+            movementExecutor.SetMovementEnabled(value);
         }
     }
 

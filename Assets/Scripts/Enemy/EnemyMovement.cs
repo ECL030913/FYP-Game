@@ -1,19 +1,43 @@
 using UnityEngine;
 
-public class EnemyMovement : MonoBehaviour
+public class EnemyMovement : MonoBehaviour, IEnemyMotor
 {
     public EnemyScriptableObject enemyData;
-    Transform Player;
-    
-    
-    void Start()
+    private Transform player;
+
+    public EnemyScriptableObject EnemyData => enemyData;
+
+    private void OnEnable()
     {
-        Player = FindAnyObjectByType<PlayerMovement>().transform;
+        FindPlayer();
     }
 
-    
-    void Update()
+    private void Update()
     {
-        transform.position = Vector2.MoveTowards(transform.position, Player.transform.position, enemyData.MoveSpeed *  Time.deltaTime);
+        if (player == null)
+        {
+            FindPlayer();
+            if (player == null)
+            {
+                return;
+            }
+        }
+
+        float moveSpeed = enemyData != null ? enemyData.MoveSpeed : 0f;
+        transform.position = Vector2.MoveTowards(
+            transform.position,
+            player.position,
+            moveSpeed * Time.deltaTime);
+    }
+
+    public void SetMovementEnabled(bool movementEnabled)
+    {
+        enabled = movementEnabled;
+    }
+
+    private void FindPlayer()
+    {
+        PlayerMovement playerMovement = FindAnyObjectByType<PlayerMovement>();
+        player = playerMovement != null ? playerMovement.transform : null;
     }
 }

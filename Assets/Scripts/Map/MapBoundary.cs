@@ -22,6 +22,14 @@ public class MapBoundary : MonoBehaviour
         bounds = boundaryCollider.bounds;
     }
 
+    private void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+    }
+
     public Vector2 ClampPosition(Vector2 position, float padding = 0.5f)
     {
         // A boundary smaller than the requested padding cannot represent a
