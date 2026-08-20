@@ -8,9 +8,15 @@ using UnityEngine;
 /// </summary>
 public class RunManager : MonoBehaviour
 {
+    private const int CurrentSaveVersion = 2;
+
     [Serializable]
     private class RunSaveData
     {
+        public int saveVersion;
+        public string playerNickname;
+        public int difficulty;
+        public bool tutorialCompleted;
         public int currentStageIndex;
         public int currentRoundIndex;
         public int currentStageType;
@@ -68,10 +74,22 @@ public class RunManager : MonoBehaviour
 
     public void BeginNewRun()
     {
+        string nickname = Data != null ? Data.playerNickname : "Player";
+        GameDifficulty difficulty = Data != null ? Data.difficulty : GameDifficulty.Normal;
+        BeginNewRun(nickname, difficulty);
+    }
+
+    public void BeginNewRun(string nickname, GameDifficulty difficulty)
+    {
         PlayerStats player = FindAnyObjectByType<PlayerStats>();
         float startingHealth = player != null ? player.BaseMaxHealth : 100f;
 
-        Data.ResetForNewRun(startingHealth);
+        if (!Enum.IsDefined(typeof(GameDifficulty), difficulty))
+        {
+            difficulty = GameDifficulty.Normal;
+        }
+
+        Data.ResetForNewRun(startingHealth, NormalizeNickname(nickname), difficulty);
         HasSavedRun = true;
         IsRunReady = true;
         SaveRun();
@@ -168,6 +186,10 @@ public class RunManager : MonoBehaviour
 
         RunSaveData save = new RunSaveData
         {
+            saveVersion = CurrentSaveVersion,
+            playerNickname = NormalizeNickname(Data.playerNickname),
+            difficulty = (int)Data.difficulty,
+            tutorialCompleted = Data.tutorialCompleted,
             currentStageIndex = Data.currentStageIndex,
             currentRoundIndex = Data.currentRoundIndex,
             currentStageType = (int)Data.currentStageType,
@@ -216,6 +238,16 @@ public class RunManager : MonoBehaviour
             }
 
             bool hasProgressionData = save.playerLevel > 0 || save.experienceToNextLevel > 0;
+            bool legacySave = save.saveVersion < CurrentSaveVersion;
+
+            Data.playerNickname = NormalizeNickname(save.playerNickname);
+            Data.difficulty = Enum.IsDefined(typeof(GameDifficulty), save.difficulty)
+                ? (GameDifficulty)save.difficulty
+                : GameDifficulty.Normal;
+            // Do not interrupt a legacy Continue session with a tutorial that
+            // did not exist when that run was created. Every new run still
+            // begins with tutorialCompleted=false.
+            Data.tutorialCompleted = legacySave || save.tutorialCompleted;
 
             Data.currentStageType = Enum.IsDefined(typeof(StageType), save.currentStageType)
                 ? (StageType)save.currentStageType
@@ -264,5 +296,13 @@ public class RunManager : MonoBehaviour
             Debug.LogWarning($"RunManager could not load the saved run: {exception.Message}");
             HasSavedRun = false;
         }
+    }
+
+    public static string NormalizeNickname(string nickname)
+    {
+        string trimmed = string.IsNullOrWhiteSpace(nickname)
+            ? "Player"
+            : nickname.Trim();
+        return trimmed.Length <= 12 ? trimmed : trimmed.Substring(0, 12);
     }
 }

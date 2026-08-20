@@ -3,6 +3,11 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "RunData", menuName = "ScriptableObjects/Run Data")]
 public class RunData : ScriptableObject
 {
+    [Header("Run Identity")]
+    public string playerNickname = "Player";
+    public GameDifficulty difficulty = GameDifficulty.Normal;
+    public bool tutorialCompleted;
+
     [Header("Progress")]
     public int currentStageIndex = 1;
     public int currentRoundIndex = 1;
@@ -28,8 +33,14 @@ public class RunData : ScriptableObject
     public float cooldownMultiplier = 1f;
     public float attackRangeMultiplier = 1f;
 
-    public void ResetForNewRun(float startingHealth)
+    public void ResetForNewRun(
+        float startingHealth,
+        string nickname,
+        GameDifficulty selectedDifficulty)
     {
+        playerNickname = RunManager.NormalizeNickname(nickname);
+        difficulty = selectedDifficulty;
+        tutorialCompleted = false;
         currentStageIndex = 1;
         currentRoundIndex = 1;
         currentStageType = StageType.Combat;

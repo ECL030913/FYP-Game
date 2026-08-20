@@ -55,6 +55,11 @@ public static class Module1Bootstrap
             {
                 player.gameObject.AddComponent<PlayerInteractionController>();
             }
+
+            if (player.GetComponent<PlayerNameplate>() == null)
+            {
+                player.gameObject.AddComponent<PlayerNameplate>();
+            }
         }
 
         if (Object.FindAnyObjectByType<StageManager>() == null)

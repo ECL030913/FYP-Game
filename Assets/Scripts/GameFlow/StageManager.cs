@@ -104,7 +104,7 @@ public class StageManager : MonoBehaviour
             runManager.SavePlayerState(player);
         }
         ui.UpdateStageHud(runManager.Data.currentStageIndex, MaxStageCount, runManager.Data.currentStageType);
-        ui.ShowStageMessage(string.Empty);
+        ui.ShowStageObjective(runManager.Data.currentStageType);
         PrepareHiddenPortalSlots();
 
         if (runManager.Data.currentStageType == StageType.Shop)
@@ -114,11 +114,30 @@ public class StageManager : MonoBehaviour
             RevealPortalChoices();
             shopSceneController = ShopSceneController.EnsureForScene();
             shopSceneController.Initialize(this, sceneDefinition);
-            ui.ShowStageMessage("Shop: inspect a display or use a portal to continue");
+            ui.ShowStageObjective(StageType.Shop);
             return;
         }
 
         GameEvents.ResetGlobalAggro();
+        bool shouldShowTutorial = runManager.Data.currentStageIndex == 1
+            && runManager.Data.currentStageType == StageType.Combat
+            && !runManager.Data.tutorialCompleted;
+        if (shouldShowTutorial)
+        {
+            ui.ShowFirstRunTutorial(
+                runManager.Data.playerNickname,
+                () =>
+                {
+                    if (RunManager.Instance == null)
+                    {
+                        return;
+                    }
+
+                    RunManager.Instance.Data.tutorialCompleted = true;
+                    RunManager.Instance.SaveRun();
+                });
+        }
+
         enemySpawner.ConfigureStage(runManager.Data.currentStageType, runManager.Data.currentStageIndex);
         enemySpawner.enabled = true;
     }
@@ -230,7 +249,11 @@ public class StageManager : MonoBehaviour
         LootPickup.ClearAll();
         GamePauseManager.Instance?.ResumeAll();
 
-        RunManager.EnsureInstance().BeginNewRun();
+        RunManager runManager = RunManager.EnsureInstance();
+        bool tutorialWasCompleted = runManager.Data.tutorialCompleted;
+        runManager.BeginNewRun();
+        runManager.Data.tutorialCompleted = tutorialWasCompleted;
+        runManager.SaveRun();
         PrepareForSceneExit();
         StartCoroutine(LoadStageAfterCleanup(StageType.Combat));
     }
@@ -291,7 +314,7 @@ public class StageManager : MonoBehaviour
 
         if (!CanPurchaseShopOffer(pedestal, out string unavailableReason, out _))
         {
-            ui.ShowStageMessage(unavailableReason);
+            ui.ShowStageMessage($"{unavailableReason}  •  Choose another display or use a portal");
             pedestal.RefreshAvailability();
             return;
         }
@@ -321,8 +344,10 @@ public class StageManager : MonoBehaviour
         if (pedestal.OfferKind == ShopOfferKind.Weapon)
         {
             WeaponDefinition definition = WeaponCatalog.Get(pedestal.WeaponType);
-            title = $"{definition.DisplayName}  •  {pedestal.Price} coins";
-            details = $"{definition.Description}\n{BuildEffectiveWeaponStats(definition, data)}\nCurrent coins: {data.coins}";
+            title = $"{definition.DisplayName}  •  {WeaponCatalog.GetCategory(definition.Type)}  •  {pedestal.Price} coins";
+            details = $"{WeaponCatalog.GetDetailedDescription(definition.Type)}\n"
+                + $"Current stats: {BuildEffectiveWeaponStats(definition, data)}\n"
+                + $"Current coins: {data.coins}";
         }
         else if (pedestal.OfferKind == ShopOfferKind.HealthPotion)
         {
@@ -392,7 +417,7 @@ public class StageManager : MonoBehaviour
         }
 
         GamePauseManager.Instance?.Resume("ShopPurchase");
-        ui.ShowStageMessage(message);
+        ui.ShowStageMessage($"{message}  •  Continue shopping or use a portal");
         shopSceneController?.RefreshAll();
         if (purchased)
         {
@@ -403,7 +428,7 @@ public class StageManager : MonoBehaviour
     private void CancelShopPurchase()
     {
         GamePauseManager.Instance?.Resume("ShopPurchase");
-        ui.ShowStageMessage(string.Empty);
+        ui.ShowStageObjective(StageType.Shop);
         shopSceneController?.RefreshAll();
     }
 
@@ -569,6 +594,109 @@ public class StageManager : MonoBehaviour
         };
     }
 
+    public bool IsUpgradeAvailable(ShopUpgradeType upgrade)
+    {
+        RunData data = RunManager.EnsureInstance().Data;
+        return upgrade switch
+        {
+            ShopUpgradeType.Heal => player != null && player.currentHealth < player.maxHealth - 0.01f,
+            ShopUpgradeType.MaxHealth => data.maxHealthBonus < MaximumMaxHealthBonus - 0.01f,
+            ShopUpgradeType.MoveSpeed => data.moveSpeedBonus < MaximumMoveSpeedBonus - 0.001f,
+            ShopUpgradeType.WeaponDamage => data.weaponDamageMultiplier < MaximumDamageMultiplier - 0.001f,
+            ShopUpgradeType.AttackSpeed => data.cooldownMultiplier > MinimumCooldownMultiplier + 0.001f,
+            ShopUpgradeType.AttackRange => data.attackRangeMultiplier < MaximumRangeMultiplier - 0.001f,
+            _ => false
+        };
+    }
+
+    public UpgradePresentation GetUpgradePresentation(ShopUpgradeType upgrade)
+    {
+        RunData data = RunManager.EnsureInstance().Data;
+        WeaponDefinition weapon = WeaponCatalog.Get(data.equippedWeapon);
+
+        switch (upgrade)
+        {
+            case ShopUpgradeType.Heal:
+            {
+                float current = player != null ? player.currentHealth : data.savedPlayerHealth;
+                float maximum = player != null ? player.maxHealth : 100f + data.maxHealthBonus;
+                float next = Mathf.Min(maximum, current + maximum * ShopHealPercent);
+                return new UpgradePresentation(
+                    "RESTORE HEALTH",
+                    "Immediately restores 25% of maximum health. This is not a permanent stat bonus.",
+                    $"HP {current:0}  ->  {next:0} / {maximum:0}");
+            }
+            case ShopUpgradeType.MaxHealth:
+            {
+                float baseHealth = player != null ? player.BaseMaxHealth : 100f;
+                float current = baseHealth + data.maxHealthBonus;
+                float nextBonus = Mathf.Min(MaximumMaxHealthBonus, data.maxHealthBonus + MaxHealthUpgradeAmount);
+                float next = baseHealth + nextBonus;
+                return new UpgradePresentation(
+                    "MAXIMUM HEALTH",
+                    "Permanently increases survivability. Existing missing health is not restored.",
+                    $"MAX HP {current:0}  ->  {next:0}");
+            }
+            case ShopUpgradeType.MoveSpeed:
+            {
+                PlayerMovement movement = player != null ? player.GetComponent<PlayerMovement>() : null;
+                float baseSpeed = movement != null && movement.characterData != null
+                    ? movement.characterData.MoveSpeed
+                    : 0f;
+                float current = baseSpeed + data.moveSpeedBonus;
+                float next = baseSpeed + Mathf.Min(MaximumMoveSpeedBonus, data.moveSpeedBonus + MoveSpeedUpgradeAmount);
+                return new UpgradePresentation(
+                    "MOVE SPEED",
+                    "Permanently increases movement speed for dodging and repositioning.",
+                    $"SPEED {current:0.00}  ->  {next:0.00}");
+            }
+            case ShopUpgradeType.WeaponDamage:
+            {
+                float current = weapon.Damage * data.weaponDamageMultiplier;
+                float nextMultiplier = Mathf.Min(MaximumDamageMultiplier, data.weaponDamageMultiplier + DamageUpgradeAmount);
+                float next = weapon.Damage * nextMultiplier;
+                return new UpgradePresentation(
+                    "WEAPON DAMAGE",
+                    "Permanently increases every weapon, including weapons bought later.",
+                    $"{weapon.DisplayName.ToUpperInvariant()} DAMAGE {current:0.0}  ->  {next:0.0}");
+            }
+            case ShopUpgradeType.AttackSpeed:
+            {
+                float current = weapon.Cooldown * data.cooldownMultiplier;
+                float nextMultiplier = Mathf.Max(MinimumCooldownMultiplier, data.cooldownMultiplier * AttackSpeedMultiplier);
+                float next = weapon.Cooldown * nextMultiplier;
+                return new UpgradePresentation(
+                    "ATTACK SPEED",
+                    "Permanently reduces cooldown so the equipped weapon attacks more often.",
+                    $"COOLDOWN {current:0.00}s  ->  {next:0.00}s   •   {1f / current:0.00}  ->  {1f / next:0.00} ATTACKS/s");
+            }
+            case ShopUpgradeType.AttackRange:
+            {
+                float nextMultiplier = Mathf.Min(MaximumRangeMultiplier, data.attackRangeMultiplier + RangeUpgradeAmount);
+                string description = weapon.Type switch
+                {
+                    WeaponType.MeleeArea => "Permanently increases this weapon's area-damage radius.",
+                    WeaponType.MeleePierce => "Permanently increases the length of this weapon's piercing thrust.",
+                    WeaponType.RangedPierce => "Permanently increases projectile travel distance.",
+                    WeaponType.RangedArea => "Permanently increases projectile distance and explosion radius.",
+                    _ => "Permanently increases effective attack range."
+                };
+                string change = weapon.Type switch
+                {
+                    WeaponType.MeleeArea =>
+                        $"RADIUS {weapon.AreaRadius * data.attackRangeMultiplier:0.00}  ->  {weapon.AreaRadius * nextMultiplier:0.00}",
+                    WeaponType.RangedArea =>
+                        $"RANGE {weapon.Range * data.attackRangeMultiplier:0.0}  ->  {weapon.Range * nextMultiplier:0.0}"
+                        + $"   •   BLAST {weapon.AreaRadius * data.attackRangeMultiplier:0.00}  ->  {weapon.AreaRadius * nextMultiplier:0.00}",
+                    _ => $"RANGE {weapon.Range * data.attackRangeMultiplier:0.0}  ->  {weapon.Range * nextMultiplier:0.0}"
+                };
+                return new UpgradePresentation("ATTACK RANGE", description, change);
+            }
+            default:
+                return new UpgradePresentation(upgrade.ToString(), string.Empty, string.Empty);
+        }
+    }
+
     private void HandleWaveCleared()
     {
         RunManager runManager = RunManager.Instance;
@@ -629,7 +757,7 @@ public class StageManager : MonoBehaviour
         }
 
         isAwaitingPortalChoice = true;
-        ui.ShowStageMessage("Choose your next portal");
+        ui.ShowStageObjective(RunManager.EnsureInstance().Data.currentStageType, true);
 
         foreach (Portal portal in activePortals)
         {

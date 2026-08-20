@@ -4,8 +4,14 @@ public class EnemyMovement : MonoBehaviour, IEnemyMotor
 {
     public EnemyScriptableObject enemyData;
     private Transform player;
+    private EnemyStats enemyStats;
 
     public EnemyScriptableObject EnemyData => enemyData;
+
+    private void Awake()
+    {
+        enemyStats = GetComponent<EnemyStats>();
+    }
 
     private void OnEnable()
     {
@@ -23,7 +29,9 @@ public class EnemyMovement : MonoBehaviour, IEnemyMotor
             }
         }
 
-        float moveSpeed = enemyData != null ? enemyData.MoveSpeed : 0f;
+        float moveSpeed = enemyStats != null
+            ? enemyStats.CurrentMoveSpeed
+            : enemyData != null ? enemyData.MoveSpeed : 0f;
         transform.position = Vector2.MoveTowards(
             transform.position,
             player.position,

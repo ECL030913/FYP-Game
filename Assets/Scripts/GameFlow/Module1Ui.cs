@@ -22,6 +22,12 @@ public class Module1Ui : MonoBehaviour
     private GameObject roundHudPanel;
     private GameObject messageHudPanel;
     private GameObject progressHudPanel;
+    private GameObject portalDetailsPanel;
+    private Text portalDetailsText;
+    private GameObject guidePanel;
+    private Text guideTitleText;
+    private Text guideBodyText;
+    private Text guideCounterText;
     private Image experienceFillImage;
     private HealthUIDisplay healthUIDisplay;
     private Action pendingShopPurchase;
@@ -29,6 +35,14 @@ public class Module1Ui : MonoBehaviour
     private int shopPurchaseInputArmFrame;
     private bool levelUpVisible;
     private bool pauseVisible;
+    private IReadOnlyList<GuidePage> guidePages;
+    private Action guideCompletion;
+    private int guidePageIndex;
+    private int guideInputArmFrame;
+    private bool guideVisible;
+    private bool guideOpenedFromPauseMenu;
+
+    public bool IsGuideVisible => guideVisible;
 
     public static Module1Ui EnsureForScene()
     {
@@ -65,6 +79,26 @@ public class Module1Ui : MonoBehaviour
 
     private void Update()
     {
+        if (guideVisible && Time.frameCount >= guideInputArmFrame)
+        {
+            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                PreviousGuidePage();
+            }
+            else if (Input.GetKeyDown(KeyCode.RightArrow)
+                     || Input.GetKeyDown(KeyCode.Return)
+                     || Input.GetKeyDown(KeyCode.Space))
+            {
+                NextGuidePage();
+            }
+            else if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CloseGuide();
+            }
+
+            return;
+        }
+
         if (shopPurchasePanel == null
             || !shopPurchasePanel.activeSelf
             || Time.frameCount < shopPurchaseInputArmFrame)
@@ -88,9 +122,20 @@ public class Module1Ui : MonoBehaviour
         if (roundText != null)
         {
             roundText.gameObject.SetActive(true);
-            roundText.text = $"STAGE {stageIndex} / {maximumStageCount}   •   {stageType.ToString().ToUpperInvariant()}";
+            int stagesUntilBoss = Mathf.Max(0, maximumStageCount - stageIndex);
+            string bossDistance = stageType == StageType.Boss
+                ? "FINAL BOSS"
+                : stageType == StageType.End
+                    ? "RUN COMPLETE"
+                    : $"FINAL BOSS IN {stagesUntilBoss} {(stagesUntilBoss == 1 ? "STAGE" : "STAGES")}";
+            roundText.text = $"STAGE {stageIndex} / {maximumStageCount}   •   {stageType.ToString().ToUpperInvariant()}\n{bossDistance}";
             roundText.color = PixelUiTheme.GetStageAccent(stageType);
         }
+    }
+
+    public void ShowStageObjective(StageType stageType, bool roomCleared = false)
+    {
+        ShowStageMessage(GameGuidanceCatalog.GetStageObjective(stageType, roomCleared));
     }
 
     public void ShowStageMessage(string message)
@@ -106,12 +151,238 @@ public class Module1Ui : MonoBehaviour
         }
     }
 
+    public void ShowPortalDetails(StageType stageType)
+    {
+        HideShopItemDetails();
+        if (portalDetailsPanel == null)
+        {
+            portalDetailsPanel = CreatePanel("Portal Details", new Vector2(720f, 126f));
+            RectTransform rect = portalDetailsPanel.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0f);
+            rect.anchorMax = new Vector2(0.5f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.anchoredPosition = new Vector2(0f, 28f);
+            ConfigurePanelLayout(portalDetailsPanel, new RectOffset(22, 22, 12, 12), 3f);
+        }
+
+        RemoveChildren(portalDetailsPanel.transform);
+        portalDetailsPanel.SetActive(true);
+        RunData data = RunManager.Instance != null ? RunManager.Instance.Data : null;
+        int nextStageIndex = data != null && stageType != StageType.End
+            ? Mathf.Min(StageManager.MaxStageCount, data.currentStageIndex + 1)
+            : StageManager.MaxStageCount;
+        string heading = stageType == StageType.End
+            ? "FINISH RUN"
+            : $"NEXT: STAGE {nextStageIndex}  •  {stageType.ToString().ToUpperInvariant()}";
+        CreateColoredText(
+            portalDetailsPanel.transform,
+            heading,
+            18,
+            TextAnchor.MiddleCenter,
+            30f,
+            PixelUiTheme.GetStageAccent(stageType));
+        portalDetailsText = CreateColoredText(
+            portalDetailsPanel.transform,
+            GameGuidanceCatalog.GetPortalDescription(stageType) + "\nPRESS E TO ENTER",
+            15,
+            TextAnchor.MiddleCenter,
+            62f,
+            PixelUiTheme.TextPrimary);
+    }
+
+    public void HidePortalDetails()
+    {
+        if (portalDetailsPanel != null)
+        {
+            portalDetailsPanel.SetActive(false);
+        }
+    }
+
+    public void ShowFirstRunTutorial(string nickname, Action onCompleted)
+    {
+        GameDifficulty difficulty = RunManager.Instance != null
+            ? RunManager.Instance.Data.difficulty
+            : GameDifficulty.Normal;
+        ShowGuide(
+            GameGuidanceCatalog.GetTutorialPages(nickname, difficulty),
+            onCompleted,
+            false,
+            "Tutorial");
+    }
+
+    public void ShowUserGuideFromPauseMenu()
+    {
+        if (pausePanel != null)
+        {
+            pausePanel.SetActive(false);
+        }
+
+        if (runStatsPanel != null)
+        {
+            runStatsPanel.SetActive(false);
+        }
+
+        string nickname = RunManager.Instance != null
+            ? RunManager.Instance.Data.playerNickname
+            : "Player";
+        GameDifficulty difficulty = RunManager.Instance != null
+            ? RunManager.Instance.Data.difficulty
+            : GameDifficulty.Normal;
+        ShowGuide(GameGuidanceCatalog.GetUserGuidePages(nickname, difficulty), null, true, null);
+    }
+
+    private void ShowGuide(
+        IReadOnlyList<GuidePage> pages,
+        Action onCompleted,
+        bool openedFromPauseMenu,
+        string pauseReason)
+    {
+        if (pages == null || pages.Count == 0)
+        {
+            onCompleted?.Invoke();
+            return;
+        }
+
+        HidePortalDetails();
+        HideShopItemDetails();
+        guidePages = pages;
+        guideCompletion = onCompleted;
+        guidePageIndex = 0;
+        guideVisible = true;
+        guideOpenedFromPauseMenu = openedFromPauseMenu;
+        guideInputArmFrame = Time.frameCount + 1;
+
+        if (!string.IsNullOrWhiteSpace(pauseReason))
+        {
+            GamePauseManager.EnsureForScene().Pause(pauseReason);
+        }
+
+        if (guidePanel == null)
+        {
+            guidePanel = CreatePanel("User Guide", new Vector2(820f, 650f));
+            ConfigurePanelLayout(guidePanel, new RectOffset(40, 40, 32, 32), 12f);
+        }
+
+        BuildGuidePage();
+    }
+
+    private void BuildGuidePage()
+    {
+        if (!guideVisible || guidePages == null || guidePages.Count == 0)
+        {
+            return;
+        }
+
+        RemoveChildren(guidePanel.transform);
+        guidePanel.SetActive(true);
+        GuidePage page = guidePages[guidePageIndex];
+        guideTitleText = CreateColoredText(
+            guidePanel.transform,
+            page.Title,
+            30,
+            TextAnchor.MiddleCenter,
+            50f,
+            PixelUiTheme.Cyan);
+        guideBodyText = CreateColoredText(
+            guidePanel.transform,
+            page.Body,
+            19,
+            TextAnchor.UpperLeft,
+            390f,
+            PixelUiTheme.TextPrimary);
+        guideCounterText = CreateColoredText(
+            guidePanel.transform,
+            $"{guidePageIndex + 1} / {guidePages.Count}   •   LEFT/RIGHT OR ENTER TO NAVIGATE",
+            14,
+            TextAnchor.MiddleCenter,
+            30f,
+            PixelUiTheme.TextMuted);
+
+        GameObject navigation = new GameObject(
+            "Navigation",
+            typeof(RectTransform),
+            typeof(HorizontalLayoutGroup),
+            typeof(LayoutElement));
+        navigation.transform.SetParent(guidePanel.transform, false);
+        navigation.GetComponent<LayoutElement>().preferredHeight = 58f;
+        HorizontalLayoutGroup layout = navigation.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 12f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        CreateButton(navigation.transform, "BACK", PreviousGuidePage, 54f);
+        CreateButton(
+            navigation.transform,
+            guideOpenedFromPauseMenu ? "RETURN TO PAUSE" : "SKIP / CLOSE",
+            CloseGuide,
+            54f);
+        CreateButton(
+            navigation.transform,
+            guidePageIndex >= guidePages.Count - 1 ? "FINISH" : "NEXT",
+            NextGuidePage,
+            54f);
+    }
+
+    private void PreviousGuidePage()
+    {
+        if (!guideVisible)
+        {
+            return;
+        }
+
+        guidePageIndex = Mathf.Max(0, guidePageIndex - 1);
+        BuildGuidePage();
+    }
+
+    private void NextGuidePage()
+    {
+        if (!guideVisible)
+        {
+            return;
+        }
+
+        if (guidePageIndex >= guidePages.Count - 1)
+        {
+            CloseGuide();
+            return;
+        }
+
+        guidePageIndex++;
+        BuildGuidePage();
+    }
+
+    private void CloseGuide()
+    {
+        if (!guideVisible)
+        {
+            return;
+        }
+
+        bool returnToPause = guideOpenedFromPauseMenu;
+        Action completion = guideCompletion;
+        guideVisible = false;
+        guideOpenedFromPauseMenu = false;
+        guideCompletion = null;
+        guidePages = null;
+        guidePanel?.SetActive(false);
+        GamePauseManager.Instance?.SuppressEscapeForCurrentFrame();
+        GamePauseManager.Instance?.Resume("Tutorial");
+
+        if (returnToPause)
+        {
+            ShowPauseMenu();
+        }
+
+        completion?.Invoke();
+    }
+
     public void ShowShopItemDetails(
         string title,
         string details,
         string action,
         Color actionColour)
     {
+        HidePortalDetails();
         if (levelUpVisible
             || pauseVisible
             || (shopPurchasePanel != null && shopPurchasePanel.activeSelf))
@@ -121,7 +392,7 @@ public class Module1Ui : MonoBehaviour
 
         if (shopItemDetailsPanel == null)
         {
-            shopItemDetailsPanel = CreatePanel("Shop Item Details", new Vector2(660f, 164f));
+            shopItemDetailsPanel = CreatePanel("Shop Item Details", new Vector2(780f, 220f));
             RectTransform rect = shopItemDetailsPanel.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0.5f, 0f);
             rect.anchorMax = new Vector2(0.5f, 0f);
@@ -142,9 +413,9 @@ public class Module1Ui : MonoBehaviour
         CreateColoredText(
             shopItemDetailsPanel.transform,
             details,
-            15,
+            14,
             TextAnchor.MiddleCenter,
-            64f,
+            116f,
             Color.white);
         CreateColoredText(
             shopItemDetailsPanel.transform,
@@ -172,7 +443,7 @@ public class Module1Ui : MonoBehaviour
         HideShopItemDetails();
         if (shopPurchasePanel == null)
         {
-            shopPurchasePanel = CreatePanel("Shop Purchase Confirmation", new Vector2(660f, 360f));
+            shopPurchasePanel = CreatePanel("Shop Purchase Confirmation", new Vector2(760f, 480f));
         }
 
         pendingShopPurchase = confirm;
@@ -190,9 +461,9 @@ public class Module1Ui : MonoBehaviour
         CreateColoredText(
             shopPurchasePanel.transform,
             details,
-            17,
+            15,
             TextAnchor.MiddleCenter,
-            84f,
+            172f,
             Color.white);
         CreateColoredText(
             shopPurchasePanel.transform,
@@ -221,9 +492,10 @@ public class Module1Ui : MonoBehaviour
         HideShopItemDetails();
         if (levelUpPanel == null)
         {
-            levelUpPanel = CreatePanel("Level Up", new Vector2(720f, 520f));
+            levelUpPanel = CreatePanel("Level Up", new Vector2(780f, 650f));
             RectTransform rect = levelUpPanel.GetComponent<RectTransform>();
-            rect.anchoredPosition = new Vector2(-190f, 0f);
+            rect.anchoredPosition = new Vector2(-210f, 0f);
+            ConfigurePanelLayout(levelUpPanel, new RectOffset(30, 30, 22, 22), 7f);
         }
 
         RemoveChildren(levelUpPanel.transform);
@@ -238,30 +510,23 @@ public class Module1Ui : MonoBehaviour
             PixelUiTheme.Gold);
         CreateColoredText(
             levelUpPanel.transform,
-            "Choose one permanent upgrade. Combat is paused.",
+            "GAME PAUSED  •  CHOOSE ONE PERMANENT UPGRADE",
             17,
             TextAnchor.MiddleCenter,
-            38f,
-            PixelUiTheme.TextMuted);
-        CreateColoredText(
-            levelUpPanel.transform,
-            "CHOOSE AN UPGRADE",
-            18,
-            TextAnchor.MiddleCenter,
             34f,
-            PixelUiTheme.Cyan);
-
+            PixelUiTheme.TextMuted);
         StageManager stageManager = FindAnyObjectByType<StageManager>();
         PlayerProgression progression = FindAnyObjectByType<PlayerProgression>();
         foreach (ShopUpgradeType upgrade in upgrades)
         {
             ShopUpgradeType capturedUpgrade = upgrade;
-            string label = stageManager != null ? stageManager.GetUpgradeLabel(upgrade) : upgrade.ToString();
-            CreateButton(
+            UpgradePresentation presentation = stageManager != null
+                ? stageManager.GetUpgradePresentation(upgrade)
+                : new UpgradePresentation(upgrade.ToString(), string.Empty, string.Empty);
+            CreateUpgradeButton(
                 levelUpPanel.transform,
-                label,
-                () => progression?.SelectUpgrade(capturedUpgrade),
-                68f);
+                presentation,
+                () => progression?.SelectUpgrade(capturedUpgrade));
         }
         ShowRunStatsPanel();
     }
@@ -283,7 +548,7 @@ public class Module1Ui : MonoBehaviour
         HideShopItemDetails();
         if (pausePanel == null)
         {
-            pausePanel = CreatePanel("Pause Menu", new Vector2(520f, 420f));
+            pausePanel = CreatePanel("Pause Menu", new Vector2(520f, 500f));
             RectTransform rect = pausePanel.GetComponent<RectTransform>();
             rect.anchoredPosition = new Vector2(-190f, 0f);
         }
@@ -299,6 +564,7 @@ public class Module1Ui : MonoBehaviour
             54f,
             PixelUiTheme.Gold);
         CreateButton(pausePanel.transform, "Resume", () => GamePauseManager.Instance?.ResumeFromPauseMenu(), 64f);
+        CreateButton(pausePanel.transform, "User Guide", ShowUserGuideFromPauseMenu, 64f);
         CreateButton(pausePanel.transform, "Main Menu", ReturnToMainMenu, 64f);
         CreateButton(pausePanel.transform, "Quit Game", QuitGame, 64f);
         ShowRunStatsPanel();
@@ -381,10 +647,18 @@ public class Module1Ui : MonoBehaviour
         levelUpVisible = false;
         pauseVisible = false;
         HideShopItemDetails();
+        HidePortalDetails();
         HideShopPurchaseConfirmation();
         HideLevelUp();
         HidePauseMenu();
         HideShopItemDetails();
+        guideVisible = false;
+        guidePages = null;
+        guideCompletion = null;
+        if (guidePanel != null)
+        {
+            guidePanel.SetActive(false);
+        }
         UpdateRunStatsPanelVisibility();
 
         if (deathPanel != null)
@@ -426,21 +700,22 @@ public class Module1Ui : MonoBehaviour
             "Stage HUD",
             new Vector2(0f, -22f),
             new Vector2(0.5f, 1f),
-            new Vector2(560f, 54f),
+            new Vector2(600f, 72f),
             TextAnchor.MiddleCenter,
-            19,
+            17,
             out roundHudPanel);
-        roundText.text = "STAGE 1 / 10   •   COMBAT";
+        roundText.text = "STAGE 1 / 10   •   COMBAT\nFINAL BOSS IN 9 STAGES";
         roundText.color = PixelUiTheme.Cyan;
 
         messageText = CreateHudPlate(
             "Stage Message",
-            new Vector2(0f, -84f),
+            new Vector2(0f, -102f),
             new Vector2(0.5f, 1f),
-            new Vector2(720f, 46f),
+            new Vector2(980f, 58f),
             TextAnchor.MiddleCenter,
-            16,
+            15,
             out messageHudPanel);
+        messageText.horizontalOverflow = HorizontalWrapMode.Wrap;
         messageHudPanel.SetActive(false);
 
         progressText = CreateHudPlate(
@@ -654,6 +929,12 @@ public class Module1Ui : MonoBehaviour
             return;
         }
 
+        CreateStatRow(runStatsPanel.transform, "PLAYER", data.playerNickname.ToUpperInvariant(), PixelUiTheme.TextPrimary);
+        CreateStatRow(
+            runStatsPanel.transform,
+            "DIFFICULTY",
+            DifficultyCatalog.Get(data.difficulty).DisplayName,
+            PixelUiTheme.Gold);
         CreateStatRow(runStatsPanel.transform, "LEVEL", data.playerLevel.ToString(), PixelUiTheme.TextPrimary);
         CreateStatRow(
             runStatsPanel.transform,
@@ -786,6 +1067,59 @@ public class Module1Ui : MonoBehaviour
         GamePauseManager.Instance?.SuppressEscapeForCurrentFrame();
         HideShopPurchaseConfirmation();
         cancel?.Invoke();
+    }
+
+    private Button CreateUpgradeButton(
+        Transform parent,
+        UpgradePresentation presentation,
+        Action onClick)
+    {
+        GameObject buttonObject = new GameObject(
+            presentation.Title,
+            typeof(RectTransform),
+            typeof(Image),
+            typeof(Button),
+            typeof(LayoutElement),
+            typeof(VerticalLayoutGroup));
+        buttonObject.transform.SetParent(parent, false);
+        buttonObject.GetComponent<LayoutElement>().preferredHeight = 142f;
+
+        VerticalLayoutGroup layout = buttonObject.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(18, 18, 9, 9);
+        layout.spacing = 2f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        Button button = buttonObject.GetComponent<Button>();
+        button.targetGraphic = buttonObject.GetComponent<Image>();
+        button.onClick.AddListener(() => onClick?.Invoke());
+        PixelUiTheme.StyleButton(button, PixelUiTheme.Cyan);
+
+        CreateColoredText(
+            buttonObject.transform,
+            presentation.Title,
+            19,
+            TextAnchor.MiddleCenter,
+            28f,
+            PixelUiTheme.Gold);
+        CreateColoredText(
+            buttonObject.transform,
+            presentation.Description,
+            14,
+            TextAnchor.MiddleCenter,
+            46f,
+            PixelUiTheme.TextPrimary);
+        CreateColoredText(
+            buttonObject.transform,
+            presentation.ValueChange,
+            15,
+            TextAnchor.MiddleCenter,
+            28f,
+            PixelUiTheme.Cyan);
+        return button;
     }
 
     private Button CreateButton(Transform parent, string label, Action onClick, float preferredHeight = 46f)

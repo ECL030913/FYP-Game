@@ -23,6 +23,10 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
     public float CurrentHealth => currentHealth;
     public float MaxHealth => currentMaxHealth;
+    public float CurrentMoveSpeed => currentMoveSpeed;
+    public float CurrentDamage => currentDamage;
+    public int CurrentExperienceReward => currentExperienceReward;
+    public int CurrentCoinReward => currentCoinReward;
     public bool IsDead => isDead;
 
     private void Awake()
@@ -165,6 +169,16 @@ public class EnemyStats : MonoBehaviour, IPoolable
         currentCoinReward = Mathf.Max(0, coins);
     }
 
+    public void ApplyDifficulty(DifficultyDefinition difficulty)
+    {
+        currentMaxHealth = Mathf.Max(1f, currentMaxHealth * difficulty.HealthMultiplier);
+        currentHealth = currentMaxHealth;
+        currentDamage = Mathf.Max(0f, currentDamage * difficulty.DamageMultiplier);
+        currentMoveSpeed = Mathf.Max(0f, currentMoveSpeed * difficulty.MovementSpeedMultiplier);
+        currentExperienceReward = ScaleReward(currentExperienceReward, difficulty.ExperienceMultiplier);
+        currentCoinReward = ScaleReward(currentCoinReward, difficulty.CoinMultiplier);
+    }
+
     public void ResetRuntimeStats()
     {
         if (enemyData == null)
@@ -245,5 +259,15 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
         isHitFlashing = false;
         hitFlashTimer = 0f;
+    }
+
+    private static int ScaleReward(int value, float multiplier)
+    {
+        if (value <= 0)
+        {
+            return 0;
+        }
+
+        return Mathf.Max(1, Mathf.RoundToInt(value * multiplier));
     }
 }

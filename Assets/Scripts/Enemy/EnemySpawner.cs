@@ -411,6 +411,15 @@ public class EnemySpawner : MonoBehaviour
                 }
             }
 
+            EnemyStats configuredStats = spawnedEnemy.GetComponent<EnemyStats>();
+            if (configuredStats != null)
+            {
+                GameDifficulty difficulty = RunManager.Instance != null
+                    ? RunManager.Instance.Data.difficulty
+                    : GameDifficulty.Normal;
+                configuredStats.ApplyDifficulty(DifficultyCatalog.Get(difficulty));
+            }
+
             enemyGroup.spawnCount++;
             currentWave.spawnCount++;
             enemiesAlive++;

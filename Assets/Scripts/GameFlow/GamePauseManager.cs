@@ -55,6 +55,14 @@ public class GamePauseManager : MonoBehaviour
         }
 
         Module1Ui ui = Module1Ui.EnsureForScene();
+        if (ui.IsGuideVisible)
+        {
+            // The guide owns Escape while visible. This also prevents the
+            // PauseMenu reason from being removed before the guide can return
+            // to that menu in the same frame.
+            return;
+        }
+
         if (pauseReasons.Contains("PauseMenu"))
         {
             ResumeFromPauseMenu();

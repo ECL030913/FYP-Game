@@ -140,6 +140,19 @@ public class PlayerProgression : MonoBehaviour
     private List<ShopUpgradeType> GetRandomUpgradeChoices()
     {
         List<ShopUpgradeType> available = new List<ShopUpgradeType>(upgradePool);
+        StageManager stageManager = FindAnyObjectByType<StageManager>();
+        if (stageManager != null)
+        {
+            available.RemoveAll(upgrade => !stageManager.IsUpgradeAvailable(upgrade));
+        }
+
+        // A heavily upgraded run must still be able to dismiss a pending
+        // level-up instead of becoming trapped in an empty paused panel.
+        if (available.Count == 0)
+        {
+            available.Add(ShopUpgradeType.Heal);
+        }
+
         List<ShopUpgradeType> choices = new List<ShopUpgradeType>();
         while (choices.Count < 3 && available.Count > 0)
         {

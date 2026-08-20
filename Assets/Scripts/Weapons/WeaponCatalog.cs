@@ -154,6 +154,42 @@ public static class WeaponCatalog
         }
     }
 
+    public static string GetCategory(WeaponType type)
+    {
+        return type switch
+        {
+            WeaponType.MeleeArea => "MELEE AREA",
+            WeaponType.MeleePierce => "MELEE PIERCING",
+            WeaponType.RangedPierce => "RANGED PIERCING",
+            WeaponType.RangedArea => "RANGED AREA",
+            _ => type.ToString().ToUpperInvariant()
+        };
+    }
+
+    public static string GetDetailedDescription(WeaponType type)
+    {
+        return type switch
+        {
+            WeaponType.MeleeArea =>
+                "Purpose: Fast crowd clearing around the player.\n"
+                + "Strength: High damage against groups in one swing.\n"
+                + "Trade-off: Very short reach requires risky close combat.",
+            WeaponType.MeleePierce =>
+                "Purpose: High single-target damage for Elite enemies and bosses.\n"
+                + "Strength: Highest damage and pierces enemies in a straight thrust.\n"
+                + "Trade-off: Short reach and narrow attack direction.",
+            WeaponType.RangedPierce =>
+                "Purpose: Safe, reliable boss damage from a distance.\n"
+                + "Strength: Long-range projectiles pass through several enemies.\n"
+                + "Trade-off: Limited crowd control when enemies surround the player.",
+            WeaponType.RangedArea =>
+                "Purpose: Safely clear groups with an explosive projectile.\n"
+                + "Strength: Damages every enemy inside the blast radius.\n"
+                + "Trade-off: Lowest direct damage and a slower attack cycle.",
+            _ => Get(type).Description
+        };
+    }
+
     public static Sprite GetIcon(WeaponType type)
     {
         return LoadSprite($"Weapons/{Get(type).ResourcePrefix}_Icon");

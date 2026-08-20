@@ -114,12 +114,21 @@ public class Portal : MonoBehaviour, IPlayerInteractable
             registeredController?.Unregister(this);
             registeredController = null;
             SetPortalLabel(false);
+            FindAnyObjectByType<Module1Ui>()?.HidePortalDetails();
         }
     }
 
     public void SetInteractionFocus(bool focused)
     {
         SetPortalLabel(focused);
+        if (focused)
+        {
+            Module1Ui.EnsureForScene().ShowPortalDetails(stageType);
+        }
+        else
+        {
+            FindAnyObjectByType<Module1Ui>()?.HidePortalDetails();
+        }
     }
 
     public void Interact(PlayerInteractionController controller)
