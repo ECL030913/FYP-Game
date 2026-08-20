@@ -324,11 +324,17 @@ public class StageManager : MonoBehaviour
             title = $"{definition.DisplayName}  •  {pedestal.Price} coins";
             details = $"{definition.Description}\n{BuildEffectiveWeaponStats(definition, data)}\nCurrent coins: {data.coins}";
         }
-        else
+        else if (pedestal.OfferKind == ShopOfferKind.HealthPotion)
         {
             title = $"Health Potion  •  {pedestal.Price} coins";
             details = $"Restore {pedestal.HealPercent * 100f:0}% of maximum health.\n"
                 + $"Current HP: {player.currentHealth:0} / {player.maxHealth:0}  •  Current coins: {data.coins}";
+        }
+        else
+        {
+            title = $"Prismatic Upgrade Potion  •  {pedestal.Price} coins";
+            details = "Gain one immediate three-choice permanent upgrade. Level and XP are unchanged.\n"
+                + $"Repeatable in this Shop  •  Current coins: {data.coins}";
         }
 
         if (CanPurchaseShopOffer(pedestal, out string unavailableReason, out Color unavailableColour))
@@ -351,17 +357,39 @@ public class StageManager : MonoBehaviour
         }
 
         RunData data = RunManager.Instance.Data;
-        return pedestal.OfferKind == ShopOfferKind.Weapon
-            ? data.shopWeaponPurchased || data.equippedWeapon == pedestal.WeaponType
-            : data.shopPotionPurchased;
+        if (pedestal.OfferKind == ShopOfferKind.Weapon)
+        {
+            return data.shopWeaponPurchased || data.equippedWeapon == pedestal.WeaponType;
+        }
+
+        return pedestal.OfferKind == ShopOfferKind.HealthPotion
+            && data.shopPotionPurchased;
     }
 
     private void ConfirmShopPurchase(ShopPedestal pedestal)
     {
         string message;
-        bool purchased = pedestal.OfferKind == ShopOfferKind.Weapon
-            ? TryCompleteWeaponPurchase(pedestal.WeaponType, pedestal.Price, out message)
-            : TryCompletePotionPurchase(pedestal.Price, pedestal.HealPercent, out message);
+        bool purchased;
+        switch (pedestal.OfferKind)
+        {
+            case ShopOfferKind.Weapon:
+                purchased = TryCompleteWeaponPurchase(
+                    pedestal.WeaponType,
+                    pedestal.Price,
+                    out message);
+                break;
+            case ShopOfferKind.HealthPotion:
+                purchased = TryCompletePotionPurchase(
+                    pedestal.Price,
+                    pedestal.HealPercent,
+                    out message);
+                break;
+            default:
+                purchased = TryCompleteUpgradePotionPurchase(
+                    pedestal.Price,
+                    out message);
+                break;
+        }
 
         GamePauseManager.Instance?.Resume("ShopPurchase");
         ui.ShowStageMessage(message);
@@ -440,6 +468,24 @@ public class StageManager : MonoBehaviour
         return true;
     }
 
+    private bool TryCompleteUpgradePotionPurchase(int price, out string message)
+    {
+        PlayerProgression progression = player != null
+            ? player.GetComponent<PlayerProgression>()
+            : null;
+        if (progression == null || !progression.TrySpendCoins(price))
+        {
+            message = "Not enough coins for the upgrade potion.";
+            return false;
+        }
+
+        progression.GrantBonusUpgradeChoice();
+        RunManager.Instance?.SavePlayerState(player);
+        RunManager.Instance?.SaveRun();
+        message = "Choose one bonus permanent upgrade.";
+        return true;
+    }
+
     private bool CanPurchaseShopOffer(
         ShopPedestal pedestal,
         out string unavailableReason,
@@ -464,7 +510,7 @@ public class StageManager : MonoBehaviour
                 return false;
             }
         }
-        else
+        else if (pedestal.OfferKind == ShopOfferKind.HealthPotion)
         {
             if (data.shopPotionPurchased)
             {

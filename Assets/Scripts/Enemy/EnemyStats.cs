@@ -12,10 +12,11 @@ public class EnemyStats : MonoBehaviour, IPoolable
     int currentCoinReward;
 
     [Header("Hit Feedback")]
-    [SerializeField] private float hitFlashDuration = 0.15f;
-    [SerializeField] private float hitFlashRate = 24f;
+    [SerializeField] private float hitFlashDuration = 0.11f;
+    [SerializeField, Range(0f, 1f)] private float hitFlashStrength = 0.82f;
 
     SpriteRenderer enemySprite;
+    Color preHitColour = Color.white;
     float hitFlashTimer;
     bool isHitFlashing;
     bool isDead;
@@ -43,7 +44,7 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
     public void TakeDamage(float dmg)
     {
-        if (isDead)
+        if (isDead || dmg <= 0f)
         {
             return;
         }
@@ -51,6 +52,7 @@ public class EnemyStats : MonoBehaviour, IPoolable
         currentHealth -= dmg;
 
         PlayHitFeedback();
+        DamageNumberPopup.Spawn(dmg, GetDamageNumberPosition());
 
         if (currentHealth <= 0)
         {
@@ -185,8 +187,22 @@ public class EnemyStats : MonoBehaviour, IPoolable
             return;
         }
 
+        // Capture the current stage tint only at the start of a flash. This
+        // preserves the red Elite tint and the final boss's own colouring.
+        if (!isHitFlashing)
+        {
+            preHitColour = enemySprite.color;
+        }
+
         hitFlashTimer = hitFlashDuration;
         isHitFlashing = true;
+        float strongestOtherChannel = Mathf.Max(preHitColour.g, preHitColour.b);
+        bool alreadyRed = preHitColour.r > 0.55f
+            && preHitColour.r - strongestOtherChannel > 0.22f;
+        Color impactColour = alreadyRed
+            ? new Color(1f, 1f, 0.62f, preHitColour.a)
+            : new Color(1f, 0.08f, 0.08f, preHitColour.a);
+        enemySprite.color = Color.Lerp(preHitColour, impactColour, hitFlashStrength);
     }
 
     void HandleHitFeedback()
@@ -204,25 +220,30 @@ public class EnemyStats : MonoBehaviour, IPoolable
 
             if (enemySprite != null)
             {
-                enemySprite.enabled = true;
+                enemySprite.color = preHitColour;
             }
-
-            return;
-        }
-
-        if (enemySprite != null)
-        {
-            enemySprite.enabled = Mathf.FloorToInt(hitFlashTimer * hitFlashRate) % 2 == 0;
         }
     }
+
+    Vector3 GetDamageNumberPosition()
+    {
+        if (enemySprite == null)
+        {
+            return transform.position + Vector3.up;
+        }
+
+        Bounds bounds = enemySprite.bounds;
+        return new Vector3(bounds.center.x, bounds.max.y + 0.24f, transform.position.z);
+    }
+
     void ResetHitFeedback()
     {
+        if (isHitFlashing && enemySprite != null)
+        {
+            enemySprite.color = preHitColour;
+        }
+
         isHitFlashing = false;
         hitFlashTimer = 0f;
-
-        if (enemySprite != null)
-        {
-            enemySprite.enabled = true;
-        }
     }
 }

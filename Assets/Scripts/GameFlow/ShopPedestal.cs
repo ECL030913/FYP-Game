@@ -4,7 +4,8 @@ using UnityEngine;
 public enum ShopOfferKind
 {
     Weapon,
-    HealthPotion
+    HealthPotion,
+    UpgradePotion
 }
 
 /// <summary>
@@ -74,6 +75,27 @@ public class ShopPedestal : MonoBehaviour, IPlayerInteractable
         return pedestal;
     }
 
+    public static ShopPedestal CreateUpgradePotion(
+        Transform parent,
+        Vector2 position,
+        int configuredPrice,
+        StageManager manager)
+    {
+        // The generated source is intentionally high-resolution pixel art.
+        // Its custom PPU and slightly smaller display scale preserve the same
+        // on-pedestal visual size as the existing 256 px health potion.
+        ShopPedestal pedestal = CreateBase(
+            parent,
+            position,
+            "Prismatic Upgrade Potion Pedestal",
+            LoadSprite("Shop/UpgradePotion", 650f),
+            manager,
+            0.42f);
+        pedestal.offerKind = ShopOfferKind.UpgradePotion;
+        pedestal.price = Mathf.Max(0, configuredPrice);
+        return pedestal;
+    }
+
     public void SetInteractionFocus(bool hasFocus)
     {
         focused = hasFocus;
@@ -116,7 +138,8 @@ public class ShopPedestal : MonoBehaviour, IPlayerInteractable
         Vector2 position,
         string objectName,
         Sprite itemSprite,
-        StageManager manager)
+        StageManager manager,
+        float itemDisplayScale = 0.62f)
     {
         GameObject pedestalObject = new GameObject(objectName);
         pedestalObject.transform.SetParent(parent, false);
@@ -126,10 +149,20 @@ public class ShopPedestal : MonoBehaviour, IPlayerInteractable
         pedestalRenderer.sprite = LoadSprite("Shop/Pedestal");
         pedestalRenderer.sortingOrder = 5;
 
-        BoxCollider2D solidCollider = pedestalObject.AddComponent<BoxCollider2D>();
-        solidCollider.isTrigger = false;
-        solidCollider.size = new Vector2(1.8f, 1.05f);
-        solidCollider.offset = new Vector2(0f, -0.45f);
+        // The artwork has two separated masses: the lower stone column and the
+        // raised display slab. A single low collider only blocked the column,
+        // allowing the player's feet collider to enter and stand inside the
+        // upper slab. Keep both solids separate so the gap and silhouette still
+        // match the pixel art while the whole physical pedestal is blocked.
+        BoxCollider2D columnCollider = pedestalObject.AddComponent<BoxCollider2D>();
+        columnCollider.isTrigger = false;
+        columnCollider.size = new Vector2(1.8f, 1.05f);
+        columnCollider.offset = new Vector2(0f, -0.45f);
+
+        BoxCollider2D displaySlabCollider = pedestalObject.AddComponent<BoxCollider2D>();
+        displaySlabCollider.isTrigger = false;
+        displaySlabCollider.size = new Vector2(1.65f, 0.72f);
+        displaySlabCollider.offset = new Vector2(0f, 0.46f);
 
         CircleCollider2D trigger = pedestalObject.AddComponent<CircleCollider2D>();
         trigger.isTrigger = true;
@@ -138,7 +171,7 @@ public class ShopPedestal : MonoBehaviour, IPlayerInteractable
         GameObject itemObject = new GameObject("Displayed Item");
         itemObject.transform.SetParent(pedestalObject.transform, false);
         itemObject.transform.localPosition = new Vector3(0f, 0.78f, 0f);
-        itemObject.transform.localScale = Vector3.one * 0.62f;
+        itemObject.transform.localScale = Vector3.one * itemDisplayScale;
         SpriteRenderer itemRenderer = itemObject.AddComponent<SpriteRenderer>();
         itemRenderer.sprite = itemSprite;
         itemRenderer.sortingOrder = 6;
@@ -201,7 +234,13 @@ public class ShopPedestal : MonoBehaviour, IPlayerInteractable
 
     private static Sprite LoadSprite(string resourcePath)
     {
-        if (SpriteCache.TryGetValue(resourcePath, out Sprite cached))
+        return LoadSprite(resourcePath, ShopPixelsPerUnit);
+    }
+
+    private static Sprite LoadSprite(string resourcePath, float pixelsPerUnit)
+    {
+        string cacheKey = $"{resourcePath}@{pixelsPerUnit:0.##}";
+        if (SpriteCache.TryGetValue(cacheKey, out Sprite cached))
         {
             return cached;
         }
@@ -219,8 +258,8 @@ public class ShopPedestal : MonoBehaviour, IPlayerInteractable
             texture,
             new Rect(0f, 0f, texture.width, texture.height),
             new Vector2(0.5f, 0.5f),
-            ShopPixelsPerUnit);
-        SpriteCache[resourcePath] = sprite;
+            pixelsPerUnit);
+        SpriteCache[cacheKey] = sprite;
         return sprite;
     }
 }

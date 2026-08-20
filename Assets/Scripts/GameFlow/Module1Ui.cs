@@ -16,15 +16,19 @@ public class Module1Ui : MonoBehaviour
     private GameObject shopPurchasePanel;
     private GameObject levelUpPanel;
     private GameObject pausePanel;
+    private GameObject runStatsPanel;
     private GameObject deathPanel;
     private GameObject victoryPanel;
-    private GameObject healthBarContainer;
-    private Slider healthBarSlider;
-    private Text healthValueText;
+    private GameObject roundHudPanel;
+    private GameObject messageHudPanel;
+    private GameObject progressHudPanel;
+    private Image experienceFillImage;
     private HealthUIDisplay healthUIDisplay;
     private Action pendingShopPurchase;
     private Action pendingShopCancel;
     private int shopPurchaseInputArmFrame;
+    private bool levelUpVisible;
+    private bool pauseVisible;
 
     public static Module1Ui EnsureForScene()
     {
@@ -47,9 +51,16 @@ public class Module1Ui : MonoBehaviour
 
     private void Awake()
     {
-        // Unity 6 removed Arial.ttf from the built-in font set.
-        font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        font = PixelUiTheme.BodyFont;
+        PixelUiTheme.ConfigureCanvas(GetComponent<Canvas>());
         CreateHud();
+    }
+
+    private void Start()
+    {
+        // HealthUIDisplay creates its value text during Awake. Styling it in
+        // Start guarantees that text exists regardless of script order.
+        StyleExistingHealthBar();
     }
 
     private void Update()
@@ -77,7 +88,8 @@ public class Module1Ui : MonoBehaviour
         if (roundText != null)
         {
             roundText.gameObject.SetActive(true);
-            roundText.text = $"Stage {stageIndex} / {maximumStageCount} | {stageType}";
+            roundText.text = $"STAGE {stageIndex} / {maximumStageCount}   •   {stageType.ToString().ToUpperInvariant()}";
+            roundText.color = PixelUiTheme.GetStageAccent(stageType);
         }
     }
 
@@ -87,6 +99,10 @@ public class Module1Ui : MonoBehaviour
         if (messageText != null)
         {
             messageText.text = message;
+            if (messageHudPanel != null)
+            {
+                messageHudPanel.SetActive(!string.IsNullOrWhiteSpace(message));
+            }
         }
     }
 
@@ -96,20 +112,22 @@ public class Module1Ui : MonoBehaviour
         string action,
         Color actionColour)
     {
+        if (levelUpVisible
+            || pauseVisible
+            || (shopPurchasePanel != null && shopPurchasePanel.activeSelf))
+        {
+            return;
+        }
+
         if (shopItemDetailsPanel == null)
         {
-            shopItemDetailsPanel = CreatePanel("Shop Item Details", new Vector2(760f, 210f));
+            shopItemDetailsPanel = CreatePanel("Shop Item Details", new Vector2(660f, 164f));
             RectTransform rect = shopItemDetailsPanel.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0.5f, 0f);
             rect.anchorMax = new Vector2(0.5f, 0f);
             rect.pivot = new Vector2(0.5f, 0f);
-            rect.anchoredPosition = new Vector2(0f, 28f);
-
-            Image background = shopItemDetailsPanel.GetComponent<Image>();
-            background.color = new Color(0.025f, 0.045f, 0.09f, 0.96f);
-            Outline outline = shopItemDetailsPanel.AddComponent<Outline>();
-            outline.effectColor = new Color(0.15f, 0.75f, 1f, 0.95f);
-            outline.effectDistance = new Vector2(3f, -3f);
+            rect.anchoredPosition = new Vector2(0f, 18f);
+            ConfigurePanelLayout(shopItemDetailsPanel, new RectOffset(22, 22, 12, 12), 4f);
         }
 
         RemoveChildren(shopItemDetailsPanel.transform);
@@ -117,23 +135,23 @@ public class Module1Ui : MonoBehaviour
         CreateColoredText(
             shopItemDetailsPanel.transform,
             title,
-            27,
+            20,
             TextAnchor.MiddleCenter,
-            42f,
+            28f,
             new Color(0.85f, 0.96f, 1f));
         CreateColoredText(
             shopItemDetailsPanel.transform,
             details,
-            18,
+            15,
             TextAnchor.MiddleCenter,
-            78f,
+            64f,
             Color.white);
         CreateColoredText(
             shopItemDetailsPanel.transform,
             action,
-            21,
+            16,
             TextAnchor.MiddleCenter,
-            42f,
+            28f,
             actionColour);
     }
 
@@ -151,14 +169,10 @@ public class Module1Ui : MonoBehaviour
         Action confirm,
         Action cancel)
     {
+        HideShopItemDetails();
         if (shopPurchasePanel == null)
         {
-            shopPurchasePanel = CreatePanel("Shop Purchase Confirmation", new Vector2(590f, 330f));
-            Image background = shopPurchasePanel.GetComponent<Image>();
-            background.color = new Color(0.025f, 0.04f, 0.075f, 0.98f);
-            Outline outline = shopPurchasePanel.AddComponent<Outline>();
-            outline.effectColor = new Color(0.25f, 0.8f, 1f, 1f);
-            outline.effectDistance = new Vector2(4f, -4f);
+            shopPurchasePanel = CreatePanel("Shop Purchase Confirmation", new Vector2(660f, 360f));
         }
 
         pendingShopPurchase = confirm;
@@ -169,21 +183,21 @@ public class Module1Ui : MonoBehaviour
         CreateColoredText(
             shopPurchasePanel.transform,
             title,
-            29,
+            24,
             TextAnchor.MiddleCenter,
             52f,
             new Color(0.85f, 0.96f, 1f));
         CreateColoredText(
             shopPurchasePanel.transform,
             details,
-            18,
+            17,
             TextAnchor.MiddleCenter,
             84f,
             Color.white);
         CreateColoredText(
             shopPurchasePanel.transform,
             "Press E again to confirm, or Esc to cancel",
-            18,
+            16,
             TextAnchor.MiddleCenter,
             38f,
             new Color(1f, 0.86f, 0.28f));
@@ -204,15 +218,38 @@ public class Module1Ui : MonoBehaviour
 
     public void ShowLevelUp(IReadOnlyList<ShopUpgradeType> upgrades)
     {
+        HideShopItemDetails();
         if (levelUpPanel == null)
         {
-            levelUpPanel = CreatePanel("Level Up", new Vector2(520f, 390f));
+            levelUpPanel = CreatePanel("Level Up", new Vector2(720f, 520f));
+            RectTransform rect = levelUpPanel.GetComponent<RectTransform>();
+            rect.anchoredPosition = new Vector2(-190f, 0f);
         }
 
         RemoveChildren(levelUpPanel.transform);
         levelUpPanel.SetActive(true);
-        CreateText(levelUpPanel.transform, "Level Up!", 30, TextAnchor.MiddleCenter, 52f);
-        CreateText(levelUpPanel.transform, "Choose one upgrade. The game is paused.", 17, TextAnchor.MiddleCenter, 38f);
+        levelUpVisible = true;
+        CreateColoredText(
+            levelUpPanel.transform,
+            "LEVEL UP",
+            30,
+            TextAnchor.MiddleCenter,
+            46f,
+            PixelUiTheme.Gold);
+        CreateColoredText(
+            levelUpPanel.transform,
+            "Choose one permanent upgrade. Combat is paused.",
+            17,
+            TextAnchor.MiddleCenter,
+            38f,
+            PixelUiTheme.TextMuted);
+        CreateColoredText(
+            levelUpPanel.transform,
+            "CHOOSE AN UPGRADE",
+            18,
+            TextAnchor.MiddleCenter,
+            34f,
+            PixelUiTheme.Cyan);
 
         StageManager stageManager = FindAnyObjectByType<StageManager>();
         PlayerProgression progression = FindAnyObjectByType<PlayerProgression>();
@@ -220,77 +257,135 @@ public class Module1Ui : MonoBehaviour
         {
             ShopUpgradeType capturedUpgrade = upgrade;
             string label = stageManager != null ? stageManager.GetUpgradeLabel(upgrade) : upgrade.ToString();
-            CreateButton(levelUpPanel.transform, label, () => progression?.SelectUpgrade(capturedUpgrade), 58f);
+            CreateButton(
+                levelUpPanel.transform,
+                label,
+                () => progression?.SelectUpgrade(capturedUpgrade),
+                68f);
         }
+        ShowRunStatsPanel();
     }
 
     public void HideLevelUp()
     {
+        levelUpVisible = false;
         if (levelUpPanel != null)
         {
             levelUpPanel.SetActive(false);
         }
+
+        UpdateRunStatsPanelVisibility();
+        FindAnyObjectByType<ShopSceneController>()?.RefreshAll();
     }
 
     public void ShowPauseMenu()
     {
+        HideShopItemDetails();
         if (pausePanel == null)
         {
-            pausePanel = CreatePanel("Pause Menu", new Vector2(460f, 330f));
+            pausePanel = CreatePanel("Pause Menu", new Vector2(520f, 420f));
+            RectTransform rect = pausePanel.GetComponent<RectTransform>();
+            rect.anchoredPosition = new Vector2(-190f, 0f);
         }
 
         RemoveChildren(pausePanel.transform);
         pausePanel.SetActive(true);
-        CreateText(pausePanel.transform, "Paused", 32, TextAnchor.MiddleCenter, 56f);
-        CreateButton(pausePanel.transform, "Resume", () => GamePauseManager.Instance?.ResumeFromPauseMenu());
-        CreateButton(pausePanel.transform, "Main Menu", ReturnToMainMenu);
-        CreateButton(pausePanel.transform, "Quit Game", QuitGame);
+        pauseVisible = true;
+        CreateColoredText(
+            pausePanel.transform,
+            "GAME PAUSED",
+            30,
+            TextAnchor.MiddleCenter,
+            54f,
+            PixelUiTheme.Gold);
+        CreateButton(pausePanel.transform, "Resume", () => GamePauseManager.Instance?.ResumeFromPauseMenu(), 64f);
+        CreateButton(pausePanel.transform, "Main Menu", ReturnToMainMenu, 64f);
+        CreateButton(pausePanel.transform, "Quit Game", QuitGame, 64f);
+        ShowRunStatsPanel();
     }
 
     public void HidePauseMenu()
     {
+        pauseVisible = false;
         if (pausePanel != null)
         {
             pausePanel.SetActive(false);
         }
+
+        UpdateRunStatsPanelVisibility();
+        FindAnyObjectByType<ShopSceneController>()?.RefreshAll();
     }
 
     public void ShowDeathMenu()
     {
+        levelUpVisible = false;
+        pauseVisible = false;
+        UpdateRunStatsPanelVisibility();
         if (deathPanel == null)
         {
-            deathPanel = CreatePanel("Death Menu", new Vector2(460f, 260f));
+            deathPanel = CreatePanel("Death Menu", new Vector2(560f, 350f));
         }
 
         RemoveChildren(deathPanel.transform);
         deathPanel.SetActive(true);
-        CreateText(deathPanel.transform, "You Died", 32, TextAnchor.MiddleCenter, 52f);
-        CreateText(deathPanel.transform, "Retry starts a new run from Stage 1.", 18, TextAnchor.MiddleCenter, 42f);
-        CreateButton(deathPanel.transform, "Retry", () => FindAnyObjectByType<StageManager>()?.RetryFromDeath());
-        CreateButton(deathPanel.transform, "Quit Game", QuitGame);
+        CreateColoredText(
+            deathPanel.transform,
+            "YOU DIED",
+            38,
+            TextAnchor.MiddleCenter,
+            62f,
+            new Color(1f, 0.28f, 0.22f));
+        CreateColoredText(
+            deathPanel.transform,
+            "Retry begins a new run from Stage 1.",
+            18,
+            TextAnchor.MiddleCenter,
+            48f,
+            PixelUiTheme.TextMuted);
+        CreateButton(deathPanel.transform, "Retry", () => FindAnyObjectByType<StageManager>()?.RetryFromDeath(), 58f);
+        CreateButton(deathPanel.transform, "Quit Game", QuitGame, 58f);
     }
 
     public void ShowVictoryMenu()
     {
+        levelUpVisible = false;
+        pauseVisible = false;
+        UpdateRunStatsPanelVisibility();
         if (victoryPanel == null)
         {
-            victoryPanel = CreatePanel("Victory Menu", new Vector2(480f, 280f));
+            victoryPanel = CreatePanel("Victory Menu", new Vector2(600f, 370f));
         }
 
         RemoveChildren(victoryPanel.transform);
         victoryPanel.SetActive(true);
-        CreateText(victoryPanel.transform, "Run Complete", 32, TextAnchor.MiddleCenter, 52f);
-        CreateText(victoryPanel.transform, "You defeated the final boss and cleared all 10 stages.", 18, TextAnchor.MiddleCenter, 52f);
-        CreateButton(victoryPanel.transform, "Return to Main Menu", ReturnToMainMenu);
-        CreateButton(victoryPanel.transform, "Quit Game", QuitGame);
+        CreateColoredText(
+            victoryPanel.transform,
+            "RUN COMPLETE",
+            38,
+            TextAnchor.MiddleCenter,
+            62f,
+            PixelUiTheme.Gold);
+        CreateColoredText(
+            victoryPanel.transform,
+            "The final boss is defeated. All 10 stages are clear.",
+            18,
+            TextAnchor.MiddleCenter,
+            54f,
+            PixelUiTheme.TextPrimary);
+        CreateButton(victoryPanel.transform, "Return to Main Menu", ReturnToMainMenu, 58f);
+        CreateButton(victoryPanel.transform, "Quit Game", QuitGame, 58f);
     }
 
     public void HideAllPanels()
     {
+        levelUpVisible = false;
+        pauseVisible = false;
         HideShopItemDetails();
         HideShopPurchaseConfirmation();
         HideLevelUp();
         HidePauseMenu();
+        HideShopItemDetails();
+        UpdateRunStatsPanelVisibility();
 
         if (deathPanel != null)
         {
@@ -308,7 +403,15 @@ public class Module1Ui : MonoBehaviour
         EnsureHud();
         if (progressText != null)
         {
-            progressText.text = $"Level {level} | XP {experience} / {requiredExperience} | Coins {coins}\nWeapon: {weaponName}";
+            progressText.text = $"LEVEL {level}     COINS {coins}\nXP {experience} / {requiredExperience}     {weaponName.ToUpperInvariant()}";
+        }
+
+        if (experienceFillImage != null)
+        {
+            float progress = requiredExperience > 0
+                ? Mathf.Clamp01((float)experience / requiredExperience)
+                : 0f;
+            experienceFillImage.rectTransform.anchorMax = new Vector2(progress, 1f);
         }
     }
 
@@ -319,100 +422,64 @@ public class Module1Ui : MonoBehaviour
             return;
         }
 
-        roundText = CreateFloatingText("Round HUD", new Vector2(0f, -18f), new Vector2(0.5f, 1f), TextAnchor.UpperCenter, 24);
-        roundText.text = "Round 1 | Combat";
+        roundText = CreateHudPlate(
+            "Stage HUD",
+            new Vector2(0f, -22f),
+            new Vector2(0.5f, 1f),
+            new Vector2(560f, 54f),
+            TextAnchor.MiddleCenter,
+            19,
+            out roundHudPanel);
+        roundText.text = "STAGE 1 / 10   •   COMBAT";
+        roundText.color = PixelUiTheme.Cyan;
 
-        messageText = CreateFloatingText("Stage Message", new Vector2(0f, -52f), new Vector2(0.5f, 1f), TextAnchor.UpperCenter, 20);
+        messageText = CreateHudPlate(
+            "Stage Message",
+            new Vector2(0f, -84f),
+            new Vector2(0.5f, 1f),
+            new Vector2(720f, 46f),
+            TextAnchor.MiddleCenter,
+            16,
+            out messageHudPanel);
+        messageHudPanel.SetActive(false);
 
-        progressText = CreateFloatingText("Progress HUD", new Vector2(20f, -92f), new Vector2(0f, 1f), TextAnchor.UpperLeft, 17);
-        progressText.text = "Level 1 | XP 0 / 30 | Coins 0\nWeapon: Rune Knife";
-    }
+        progressText = CreateHudPlate(
+            "Progress HUD",
+            new Vector2(24f, -80f),
+            new Vector2(0f, 1f),
+            new Vector2(430f, 84f),
+            TextAnchor.MiddleLeft,
+            17,
+            out progressHudPanel);
+        progressText.rectTransform.offsetMin = new Vector2(20f, 22f);
+        progressText.rectTransform.offsetMax = new Vector2(-20f, -13f);
+        progressText.text = "LEVEL 1     COINS 0\nXP 0 / 30     RUNE KNIFE";
 
-    private void CreateHealthBarUI()
-    {
-        if (healthBarContainer != null)
-        {
-            return;
-        }
+        GameObject experienceTrack = new GameObject(
+            "Experience Track",
+            typeof(RectTransform),
+            typeof(Image));
+        experienceTrack.transform.SetParent(progressHudPanel.transform, false);
+        RectTransform trackRect = experienceTrack.GetComponent<RectTransform>();
+        trackRect.anchorMin = new Vector2(0f, 0f);
+        trackRect.anchorMax = new Vector2(1f, 0f);
+        trackRect.pivot = new Vector2(0.5f, 0f);
+        trackRect.offsetMin = new Vector2(20f, 10f);
+        trackRect.offsetMax = new Vector2(-20f, 18f);
+        experienceTrack.GetComponent<Image>().color = new Color(0.015f, 0.025f, 0.055f, 0.95f);
 
-        // Create container for health bar
-        healthBarContainer = new GameObject("Health Bar Container", typeof(RectTransform), typeof(VerticalLayoutGroup));
-        healthBarContainer.transform.SetParent(transform, false);
-
-        RectTransform containerRect = healthBarContainer.GetComponent<RectTransform>();
-        containerRect.anchorMin = new Vector2(0f, 1f);
-        containerRect.anchorMax = new Vector2(0f, 1f);
-        containerRect.pivot = new Vector2(0f, 1f);
-        containerRect.anchoredPosition = new Vector2(20f, -20f);
-        containerRect.sizeDelta = new Vector2(280f, 80f);
-
-        VerticalLayoutGroup layout = healthBarContainer.GetComponent<VerticalLayoutGroup>();
-        layout.spacing = 8f;
-        layout.childControlHeight = false;
-        layout.childControlWidth = true;
-        layout.childForceExpandWidth = true;
-
-        // Create health value text (100 / 150 HP)
-        GameObject healthTextObj = new GameObject("Health Text", typeof(RectTransform), typeof(Text), typeof(LayoutElement));
-        healthTextObj.transform.SetParent(healthBarContainer.transform, false);
-
-        healthValueText = healthTextObj.GetComponent<Text>();
-        healthValueText.font = font;
-        healthValueText.text = "100 / 100";
-        healthValueText.fontSize = 18;
-        healthValueText.fontStyle = FontStyle.Bold;
-        healthValueText.alignment = TextAnchor.MiddleLeft;
-        healthValueText.color = new Color(0.9f, 0.2f, 0.2f, 1f); // Red color for health
-        healthValueText.horizontalOverflow = HorizontalWrapMode.Overflow;
-
-        RectTransform textRect = healthTextObj.GetComponent<RectTransform>();
-        textRect.sizeDelta = new Vector2(280f, 24f);
-        healthTextObj.GetComponent<LayoutElement>().preferredHeight = 24f;
-
-        // Create health bar slider
-        GameObject sliderObj = new GameObject("Health Bar Slider", typeof(RectTransform), typeof(Slider), typeof(HealthUIDisplay), typeof(LayoutElement));
-        sliderObj.transform.SetParent(healthBarContainer.transform, false);
-
-        healthBarSlider = sliderObj.GetComponent<Slider>();
-        healthBarSlider.minValue = 0f;
-        healthBarSlider.maxValue = 1f;
-        healthBarSlider.value = 1f;
-        healthBarSlider.interactable = false;
-
-        RectTransform sliderRect = sliderObj.GetComponent<RectTransform>();
-        sliderRect.sizeDelta = new Vector2(280f, 24f);
-        sliderObj.GetComponent<LayoutElement>().preferredHeight = 24f;
-
-        // Setup slider appearance
-        Image sliderBg = sliderObj.AddComponent<Image>();
-        sliderBg.color = new Color(0.1f, 0.1f, 0.1f, 0.8f);
-
-        // Create fill area
-        GameObject fillAreaObj = new GameObject("Fill Area", typeof(RectTransform), typeof(Image));
-        fillAreaObj.transform.SetParent(sliderObj.transform, false);
-        RectTransform fillAreaRect = fillAreaObj.GetComponent<RectTransform>();
-        fillAreaRect.anchorMin = Vector2.zero;
-        fillAreaRect.anchorMax = Vector2.one;
-        fillAreaRect.offsetMin = new Vector2(4f, 4f);
-        fillAreaRect.offsetMax = new Vector2(-4f, -4f);
-
-        // Create fill
-        GameObject fillObj = new GameObject("Fill", typeof(RectTransform), typeof(Image));
-        fillObj.transform.SetParent(fillAreaObj.transform, false);
-        Image fillImage = fillObj.GetComponent<Image>();
-        fillImage.color = new Color(0.2f, 1f, 0.2f, 1f); // Green health bar
-        RectTransform fillRect = fillObj.GetComponent<RectTransform>();
+        GameObject experienceFill = new GameObject(
+            "Experience Fill",
+            typeof(RectTransform),
+            typeof(Image));
+        experienceFill.transform.SetParent(experienceTrack.transform, false);
+        RectTransform fillRect = experienceFill.GetComponent<RectTransform>();
         fillRect.anchorMin = Vector2.zero;
-        fillRect.anchorMax = Vector2.one;
+        fillRect.anchorMax = new Vector2(0f, 1f);
         fillRect.offsetMin = Vector2.zero;
         fillRect.offsetMax = Vector2.zero;
-
-        healthBarSlider.fillRect = fillRect;
-
-        // Setup HealthUIDisplay
-        healthUIDisplay = sliderObj.GetComponent<HealthUIDisplay>();
-        healthUIDisplay.healthFillImage = fillImage;
-        healthUIDisplay.healthValueText = healthValueText;
+        experienceFillImage = experienceFill.GetComponent<Image>();
+        experienceFillImage.color = PixelUiTheme.Experience;
     }
 
     private void EnsureHud()
@@ -423,43 +490,98 @@ public class Module1Ui : MonoBehaviour
         }
     }
 
-    public Slider GetHealthBar()
+    private void StyleExistingHealthBar()
     {
-        EnsureHud();
-        return healthBarSlider;
+        healthUIDisplay = FindAnyObjectByType<HealthUIDisplay>();
+        if (healthUIDisplay == null)
+        {
+            return;
+        }
+
+        RectTransform healthRect = healthUIDisplay.GetComponent<RectTransform>();
+        if (healthRect == null)
+        {
+            return;
+        }
+
+        healthRect.anchorMin = new Vector2(0f, 1f);
+        healthRect.anchorMax = new Vector2(0f, 1f);
+        healthRect.pivot = new Vector2(0f, 1f);
+        healthRect.anchoredPosition = new Vector2(24f, -24f);
+        healthRect.sizeDelta = new Vector2(370f, 44f);
+
+        Image frame = healthUIDisplay.GetComponent<Image>();
+        if (frame == null)
+        {
+            frame = healthUIDisplay.gameObject.AddComponent<Image>();
+        }
+
+        frame.raycastTarget = false;
+        PixelUiTheme.StylePanel(frame, true);
+
+        Image background = healthRect.Find("Background")?.GetComponent<Image>();
+        if (background != null)
+        {
+            background.sprite = null;
+            background.color = new Color(0.11f, 0.015f, 0.025f, 0.98f);
+            background.rectTransform.offsetMin = new Vector2(9f, 8f);
+            background.rectTransform.offsetMax = new Vector2(-9f, -8f);
+        }
+
+        Image fill = healthUIDisplay.healthFillImage;
+        if (fill != null)
+        {
+            fill.sprite = null;
+            fill.rectTransform.offsetMin = new Vector2(9f, 8f);
+            fill.rectTransform.offsetMax = new Vector2(-9f, -8f);
+        }
+
+        healthUIDisplay.ApplyHudTheme(PixelUiTheme.Health, PixelUiTheme.DisplayFont, 16);
     }
 
-    public HealthUIDisplay GetHealthUIDisplay()
+    private Text CreateHudPlate(
+        string name,
+        Vector2 anchoredPosition,
+        Vector2 anchor,
+        Vector2 size,
+        TextAnchor alignment,
+        int fontSize,
+        out GameObject panelObject)
     {
-        EnsureHud();
-        return healthUIDisplay;
-    }
+        panelObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+        panelObject.transform.SetParent(transform, false);
 
-    private Text CreateFloatingText(string name, Vector2 anchoredPosition, Vector2 anchor, TextAnchor alignment, int fontSize)
-    {
-        GameObject textObject = new GameObject(name, typeof(RectTransform), typeof(Text));
-        textObject.transform.SetParent(transform, false);
+        RectTransform panelRect = panelObject.GetComponent<RectTransform>();
+        panelRect.anchorMin = anchor;
+        panelRect.anchorMax = anchor;
+        panelRect.pivot = anchor;
+        panelRect.anchoredPosition = anchoredPosition;
+        panelRect.sizeDelta = size;
 
-        RectTransform rect = textObject.GetComponent<RectTransform>();
-        rect.anchorMin = anchor;
-        rect.anchorMax = anchor;
-        rect.pivot = anchor;
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = new Vector2(520f, 48f);
+        Image panelImage = panelObject.GetComponent<Image>();
+        panelImage.raycastTarget = false;
+        PixelUiTheme.StylePanel(panelImage, true);
+
+        GameObject textObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+        textObject.transform.SetParent(panelObject.transform, false);
+        RectTransform textRect = textObject.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(16f, 8f);
+        textRect.offsetMax = new Vector2(-16f, -8f);
 
         Text text = textObject.GetComponent<Text>();
         text.font = font;
-        text.fontSize = fontSize;
         text.alignment = alignment;
-        text.color = Color.white;
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
+        PixelUiTheme.StyleText(text, fontSize, PixelUiTheme.TextPrimary, true);
         return text;
     }
 
     private GameObject CreatePanel(string name, Vector2 size)
     {
-        GameObject panelObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        GameObject panelObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
         panelObject.transform.SetParent(transform, false);
 
         RectTransform rect = panelObject.GetComponent<RectTransform>();
@@ -469,37 +591,161 @@ public class Module1Ui : MonoBehaviour
         rect.sizeDelta = size;
 
         Image image = panelObject.GetComponent<Image>();
-        image.color = new Color(0.06f, 0.08f, 0.13f, 0.92f);
+        PixelUiTheme.StylePanel(image);
 
-        VerticalLayoutGroup layout = panelObject.GetComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(28, 28, 24, 24);
-        layout.spacing = 12f;
-        layout.childAlignment = TextAnchor.MiddleCenter;
-        layout.childControlWidth = true;
-        layout.childControlHeight = false;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
-
-        ContentSizeFitter fitter = panelObject.GetComponent<ContentSizeFitter>();
-        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        ConfigurePanelLayout(panelObject, new RectOffset(32, 32, 24, 24), 10f);
         return panelObject;
     }
 
-    private void CreateText(Transform parent, string value, int fontSize, TextAnchor alignment, float preferredHeight)
+    private static void ConfigurePanelLayout(
+        GameObject panelObject,
+        RectOffset padding,
+        float spacing)
     {
-        GameObject textObject = new GameObject("Text", typeof(RectTransform), typeof(Text), typeof(LayoutElement));
-        textObject.transform.SetParent(parent, false);
+        VerticalLayoutGroup layout = panelObject.GetComponent<VerticalLayoutGroup>();
+        layout.padding = padding;
+        layout.spacing = spacing;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+    }
 
+    private void ShowRunStatsPanel()
+    {
+        if (runStatsPanel == null)
+        {
+            runStatsPanel = CreatePanel("Run Stats", new Vector2(360f, 620f));
+            RectTransform rect = runStatsPanel.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(1f, 0.5f);
+            rect.anchorMax = new Vector2(1f, 0.5f);
+            rect.pivot = new Vector2(1f, 0.5f);
+            rect.anchoredPosition = new Vector2(-24f, 0f);
+            ConfigurePanelLayout(
+                runStatsPanel,
+                new RectOffset(24, 24, 22, 22),
+                5f);
+        }
+
+        RemoveChildren(runStatsPanel.transform);
+        runStatsPanel.SetActive(true);
+
+        CreateColoredText(
+            runStatsPanel.transform,
+            "RUN STATS",
+            20,
+            TextAnchor.MiddleCenter,
+            38f,
+            PixelUiTheme.Cyan);
+
+        RunData data = RunManager.Instance != null
+            ? RunManager.Instance.Data
+            : null;
+        if (data == null)
+        {
+            CreateColoredText(
+                runStatsPanel.transform,
+                "No active run",
+                17,
+                TextAnchor.MiddleCenter,
+                32f,
+                PixelUiTheme.TextMuted);
+            return;
+        }
+
+        CreateStatRow(runStatsPanel.transform, "LEVEL", data.playerLevel.ToString(), PixelUiTheme.TextPrimary);
+        CreateStatRow(
+            runStatsPanel.transform,
+            "STAGE",
+            $"{data.currentStageIndex} / {StageManager.MaxStageCount}",
+            PixelUiTheme.GetStageAccent(data.currentStageType));
+        CreateStatRow(
+            runStatsPanel.transform,
+            "EXPERIENCE",
+            $"{data.currentExperience} / {data.experienceToNextLevel}",
+            PixelUiTheme.Experience);
+        CreateStatRow(runStatsPanel.transform, "COINS", data.coins.ToString(), PixelUiTheme.Gold);
+
+        CreateColoredText(
+            runStatsPanel.transform,
+            "PERMANENT UPGRADES",
+            16,
+            TextAnchor.MiddleLeft,
+            30f,
+            PixelUiTheme.TextMuted);
+
+        int maximumHealthBonus = Mathf.RoundToInt(Mathf.Max(0f, data.maxHealthBonus));
+        int damageBonus = Mathf.RoundToInt(
+            Mathf.Max(0f, data.weaponDamageMultiplier - 1f) * 100f);
+        int attackSpeedBonus = Mathf.RoundToInt(
+            Mathf.Max(0f, 1f / Mathf.Max(0.01f, data.cooldownMultiplier) - 1f) * 100f);
+        int rangeBonus = Mathf.RoundToInt(
+            Mathf.Max(0f, data.attackRangeMultiplier - 1f) * 100f);
+
+        CreateStatRow(runStatsPanel.transform, "MAX HEALTH", $"+{maximumHealthBonus}", PixelUiTheme.Health);
+        CreateStatRow(runStatsPanel.transform, "WEAPON DAMAGE", $"+{damageBonus}%", PixelUiTheme.Gold);
+        CreateStatRow(runStatsPanel.transform, "ATTACK SPEED", $"+{attackSpeedBonus}%", PixelUiTheme.Cyan);
+        CreateStatRow(runStatsPanel.transform, "MOVE SPEED", $"+{data.moveSpeedBonus:0.00}", new Color(0.35f, 1f, 0.62f));
+        CreateStatRow(runStatsPanel.transform, "ATTACK RANGE", $"+{rangeBonus}%", new Color(0.72f, 0.48f, 1f));
+    }
+
+    private void UpdateRunStatsPanelVisibility()
+    {
+        if (runStatsPanel != null)
+        {
+            runStatsPanel.SetActive(levelUpVisible || pauseVisible);
+        }
+    }
+
+    private void CreateStatRow(
+        Transform parent,
+        string label,
+        string value,
+        Color valueColour)
+    {
+        GameObject row = new GameObject(
+            $"{label} Row",
+            typeof(RectTransform),
+            typeof(HorizontalLayoutGroup),
+            typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+
+        HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 12f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = true;
+        row.GetComponent<LayoutElement>().preferredHeight = 34f;
+
+        Text labelText = CreateInlineText(row.transform, label, TextAnchor.MiddleLeft);
+        LayoutElement labelElement = labelText.GetComponent<LayoutElement>();
+        labelElement.flexibleWidth = 1f;
+
+        Text valueText = CreateInlineText(row.transform, value, TextAnchor.MiddleRight);
+        LayoutElement valueElement = valueText.GetComponent<LayoutElement>();
+        valueElement.preferredWidth = 135f;
+        PixelUiTheme.StyleText(valueText, 14, valueColour, true);
+    }
+
+    private Text CreateInlineText(Transform parent, string value, TextAnchor alignment)
+    {
+        GameObject textObject = new GameObject(
+            "Text",
+            typeof(RectTransform),
+            typeof(Text),
+            typeof(LayoutElement));
+        textObject.transform.SetParent(parent, false);
         Text text = textObject.GetComponent<Text>();
         text.font = font;
         text.text = value;
-        text.fontSize = fontSize;
         text.alignment = alignment;
-        text.color = Color.white;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
-
-        textObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
+        PixelUiTheme.StyleText(text, 15, PixelUiTheme.TextPrimary);
+        return text;
     }
 
     private Text CreateColoredText(
@@ -523,6 +769,7 @@ public class Module1Ui : MonoBehaviour
         text.horizontalOverflow = HorizontalWrapMode.Wrap;
         text.verticalOverflow = VerticalWrapMode.Overflow;
         textObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
+        PixelUiTheme.StyleText(text, fontSize, colour, fontSize >= 20);
         return text;
     }
 
@@ -546,11 +793,8 @@ public class Module1Ui : MonoBehaviour
         GameObject buttonObject = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
         buttonObject.transform.SetParent(parent, false);
 
-        Image image = buttonObject.GetComponent<Image>();
-        image.color = new Color(0.22f, 0.48f, 0.8f, 1f);
-
         Button button = buttonObject.GetComponent<Button>();
-        button.targetGraphic = image;
+        button.targetGraphic = buttonObject.GetComponent<Image>();
         button.onClick.AddListener(() => onClick?.Invoke());
         buttonObject.GetComponent<LayoutElement>().preferredHeight = preferredHeight;
 
@@ -559,17 +803,17 @@ public class Module1Ui : MonoBehaviour
         RectTransform labelRect = labelObject.GetComponent<RectTransform>();
         labelRect.anchorMin = Vector2.zero;
         labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero;
-        labelRect.offsetMax = Vector2.zero;
+        labelRect.offsetMin = new Vector2(16f, 5f);
+        labelRect.offsetMax = new Vector2(-16f, -5f);
 
         Text text = labelObject.GetComponent<Text>();
         text.font = font;
         text.text = label;
-        text.fontSize = 19;
         text.alignment = TextAnchor.MiddleCenter;
-        text.color = Color.white;
         text.horizontalOverflow = HorizontalWrapMode.Wrap;
         text.verticalOverflow = VerticalWrapMode.Overflow;
+        PixelUiTheme.StyleText(text, 19, PixelUiTheme.TextPrimary, true);
+        PixelUiTheme.StyleButton(button, PixelUiTheme.Cyan);
         return button;
     }
 

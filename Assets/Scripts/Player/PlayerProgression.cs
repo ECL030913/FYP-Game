@@ -74,6 +74,24 @@ public class PlayerProgression : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Grants one upgrade selection without changing level or experience.
+    /// Used by the repeatable Prismatic Upgrade Potion in the Shop.
+    /// </summary>
+    public void GrantBonusUpgradeChoice()
+    {
+        if (RunManager.Instance == null || !RunManager.Instance.IsRunReady)
+        {
+            return;
+        }
+
+        pendingLevelUps++;
+        if (!levelUpPanelOpen)
+        {
+            ShowNextLevelUp();
+        }
+    }
+
     public void SelectUpgrade(ShopUpgradeType upgrade)
     {
         if (!levelUpPanelOpen)

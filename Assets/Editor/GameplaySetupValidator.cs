@@ -31,6 +31,7 @@ public static class GameplaySetupValidator
         ValidateCorePrefab(errors);
         ValidateEnemyPrefabs(errors);
         ValidateBuildSettings(errors);
+        ValidateUiAssets(errors);
 
         foreach ((string path, StageType stageType) in GameplayScenes)
         {
@@ -147,6 +148,29 @@ public static class GameplaySetupValidator
         }
     }
 
+    private static void ValidateUiAssets(ICollection<string> errors)
+    {
+        Font displayFont = Resources.Load<Font>("Fonts/Silkscreen-Regular");
+        if (displayFont == null)
+        {
+            errors.Add(
+                "The Silkscreen display font must exist at Resources/Fonts/Silkscreen-Regular.");
+        }
+
+        Font bodyFont = Resources.Load<Font>("Fonts/PixelifySans");
+        if (bodyFont == null)
+        {
+            errors.Add(
+                "The Pixelify Sans body font must exist at Resources/Fonts/PixelifySans.");
+        }
+
+        if (Resources.Load<Texture2D>("Shop/UpgradePotion") == null)
+        {
+            errors.Add(
+                "The repeatable upgrade potion art must exist at Resources/Shop/UpgradePotion.");
+        }
+    }
+
     private static void ValidateScene(
         string path,
         StageType expectedStageType,
@@ -222,9 +246,11 @@ public static class GameplaySetupValidator
         ICollection<string> errors)
     {
         IReadOnlyList<Transform> pedestals = definition.ShopPedestalAnchors;
-        if (pedestals == null || pedestals.Count != 5)
+        if (pedestals == null || pedestals.Count != 6)
         {
-            errors.Add("Shop scene must define four weapon pedestals and one potion pedestal.");
+            errors.Add(
+                "Shop scene must define four weapon pedestals, one health potion pedestal, "
+                + "and one repeatable upgrade potion pedestal.");
             return;
         }
 

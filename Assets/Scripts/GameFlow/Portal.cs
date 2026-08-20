@@ -248,14 +248,26 @@ public class Portal : MonoBehaviour, IPlayerInteractable
         label = labelObject.AddComponent<TextMesh>();
         label.anchor = TextAnchor.LowerCenter;
         label.alignment = TextAlignment.Center;
-        label.characterSize = 0.12f;
-        label.fontSize = 44;
-        label.color = Color.white;
+        label.characterSize = 0.075f;
+        label.fontSize = 42;
+        label.lineSpacing = 0.88f;
+        label.richText = false;
+        label.color = PixelUiTheme.GetStageAccent(stageType);
+
+        Font portalFont = PixelUiTheme.DisplayFont;
+        if (portalFont != null)
+        {
+            label.font = portalFont;
+        }
 
         MeshRenderer labelRenderer = label.GetComponent<MeshRenderer>();
         if (labelRenderer != null)
         {
             labelRenderer.sortingOrder = 12;
+            if (portalFont != null)
+            {
+                labelRenderer.sharedMaterial = portalFont.material;
+            }
         }
     }
 

@@ -10,14 +10,16 @@ public class ShopSceneController : MonoBehaviour
 {
     private const int HealthPotionPrice = 12;
     private const float HealthPotionHealPercent = 0.35f;
+    private const int UpgradePotionPrice = 45;
 
     private static readonly Vector2[] FallbackPositions =
     {
-        new Vector2(-7.5f, -4.5f),
-        new Vector2(-2.5f, -4.5f),
-        new Vector2(2.5f, -4.5f),
-        new Vector2(7.5f, -4.5f),
-        new Vector2(0f, -7.4f)
+        new Vector2(-7.5f, -3.2f),
+        new Vector2(-2.5f, -3.2f),
+        new Vector2(2.5f, -3.2f),
+        new Vector2(7.5f, -3.2f),
+        new Vector2(-3f, -7.2f),
+        new Vector2(3f, -7.2f)
     };
 
     private readonly List<ShopPedestal> pedestals = new List<ShopPedestal>();
@@ -62,6 +64,11 @@ public class ShopSceneController : MonoBehaviour
             GetPosition(anchors, 4),
             HealthPotionPrice,
             HealthPotionHealPercent,
+            stageManager));
+        pedestals.Add(ShopPedestal.CreateUpgradePotion(
+            transform,
+            GetPosition(anchors, 5),
+            UpgradePotionPrice,
             stageManager));
         RefreshAll();
     }

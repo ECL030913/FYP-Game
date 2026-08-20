@@ -211,18 +211,23 @@ public static class GameplaySceneBuilder
         shopAnchorsRoot.SetParent(anchorsRoot, false);
         Vector2[] positions =
         {
-            new Vector2(-7.5f, -4.5f),
-            new Vector2(-2.5f, -4.5f),
-            new Vector2(2.5f, -4.5f),
-            new Vector2(7.5f, -4.5f),
-            new Vector2(0f, -7.4f)
+            new Vector2(-7.5f, -3.2f),
+            new Vector2(-2.5f, -3.2f),
+            new Vector2(2.5f, -3.2f),
+            new Vector2(7.5f, -3.2f),
+            new Vector2(-3f, -7.2f),
+            new Vector2(3f, -7.2f)
         };
         Transform[] shopAnchors = new Transform[positions.Length];
         for (int i = 0; i < positions.Length; i++)
         {
             shopAnchors[i] = CreateAnchor(
                 shopAnchorsRoot,
-                i < 4 ? $"Weapon Pedestal {i + 1}" : "Health Potion Pedestal",
+                i < 4
+                    ? $"Weapon Pedestal {i + 1}"
+                    : i == 4
+                        ? "Health Potion Pedestal"
+                        : "Prismatic Upgrade Potion Pedestal",
                 positions[i]);
         }
 

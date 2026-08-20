@@ -62,6 +62,42 @@ public class HealthUIDisplay : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Applies the shared pixel HUD palette after this component has created
+    /// its runtime value label. Updating originalHealthBarColor is important:
+    /// the low-health pulse restores this stored colour every frame.
+    /// </summary>
+    public void ApplyHudTheme(Color fillColour, Font uiFont, int valueFontSize)
+    {
+        Initialize();
+        if (healthFillImage != null)
+        {
+            healthFillImage.color = fillColour;
+            originalHealthBarColor = fillColour;
+        }
+
+        if (healthValueText == null)
+        {
+            return;
+        }
+
+        healthValueText.font = uiFont;
+        healthValueText.fontSize = Mathf.Max(14, valueFontSize);
+        healthValueText.fontStyle = FontStyle.Normal;
+        healthValueText.alignment = TextAnchor.MiddleCenter;
+        healthValueText.color = Color.white;
+        healthValueText.raycastTarget = false;
+
+        Outline outline = healthValueText.GetComponent<Outline>();
+        if (outline == null)
+        {
+            outline = healthValueText.gameObject.AddComponent<Outline>();
+        }
+
+        outline.effectColor = new Color(0f, 0f, 0f, 0.95f);
+        outline.effectDistance = new Vector2(2f, -2f);
+    }
+
     private void Initialize()
     {
         if (initialized)
@@ -94,7 +130,7 @@ public class HealthUIDisplay : MonoBehaviour
 
     private void EnsureHealthValueText()
     {
-        Font uiFont = damagePopupFont ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        Font uiFont = damagePopupFont ?? PixelUiTheme.DisplayFont;
 
         if (healthValueText == null)
         {
@@ -177,7 +213,7 @@ public class HealthUIDisplay : MonoBehaviour
     {
         if (damagePopupFont == null)
         {
-            damagePopupFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            damagePopupFont = PixelUiTheme.DisplayFont;
         }
 
         // Get or create world canvas
@@ -214,6 +250,11 @@ public class HealthUIDisplay : MonoBehaviour
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
         text.raycastTarget = false;
+        PixelUiTheme.StyleText(
+            text,
+            damagePopupFontSize,
+            new Color(1f, 0.2f, 0.2f, 1f),
+            true);
 
         CanvasGroup canvasGroup = popupObject.GetComponent<CanvasGroup>();
         canvasGroup.alpha = 1f;
@@ -258,7 +299,7 @@ public class HealthUIDisplay : MonoBehaviour
     {
         if (damagePopupFont == null)
         {
-            damagePopupFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            damagePopupFont = PixelUiTheme.DisplayFont;
         }
 
         if (worldCanvas == null)
@@ -290,6 +331,11 @@ public class HealthUIDisplay : MonoBehaviour
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
         text.raycastTarget = false;
+        PixelUiTheme.StyleText(
+            text,
+            damagePopupFontSize,
+            new Color(0.2f, 1f, 0.2f, 1f),
+            true);
 
         CanvasGroup canvasGroup = popupObject.GetComponent<CanvasGroup>();
         canvasGroup.alpha = 1f;

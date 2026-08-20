@@ -32,6 +32,7 @@ public class MainMenuController : MonoBehaviour
         BtnNewGame.onClick.AddListener(StartNewGame);
         BtnContinue.onClick.AddListener(ContinueGame);
         BtnQuit.onClick.AddListener(QuitGame);
+        PixelUiTheme.ApplyMainMenu(BtnNewGame, BtnContinue, BtnQuit, SaveSlotText);
     }
 
     private void Start()
