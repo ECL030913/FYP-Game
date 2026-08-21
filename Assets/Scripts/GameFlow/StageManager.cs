@@ -990,7 +990,16 @@ public class StageManager : MonoBehaviour
             FindObjectsInactive.Exclude);
         foreach (RuntimeWeaponProjectile projectile in runtimeProjectiles)
         {
-            if (projectile != null)
+            if (projectile == null)
+            {
+                continue;
+            }
+
+            if (ObjectPoolManager.Instance != null)
+            {
+                ObjectPoolManager.Instance.ReleaseObject(projectile.gameObject);
+            }
+            else
             {
                 Destroy(projectile.gameObject);
             }
@@ -1000,7 +1009,16 @@ public class StageManager : MonoBehaviour
             FindObjectsInactive.Exclude);
         foreach (WeaponVisualEffect effect in effects)
         {
-            if (effect != null)
+            if (effect == null)
+            {
+                continue;
+            }
+
+            if (ObjectPoolManager.Instance != null)
+            {
+                ObjectPoolManager.Instance.ReleaseObject(effect.gameObject);
+            }
+            else
             {
                 Destroy(effect.gameObject);
             }
