@@ -271,6 +271,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f20c8c0698d6e704e8d0bb087660ef43, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ObjectPoolManager
+  poolingEnabled: 1
   defaultCapacity: 30
   maxSize: 300
 --- !u!1 &1684933756179907498
@@ -966,7 +967,6 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 5093009944174095158}
   - {fileID: 1982522394913863011}
   m_Father: {fileID: 6723904801621957099}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -2014,61 +2014,6 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!1 &9049001495775943471
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 5093009944174095158}
-  - component: {fileID: 3016624560792354681}
-  m_Layer: 0
-  m_Name: Knife Controller
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &5093009944174095158
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9049001495775943471}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 2602390563138586346}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &3016624560792354681
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9049001495775943471}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4c56c4cc158748f4193fac0406c7f08d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::KnifeController
-  weaponData: {fileID: 11400000, guid: 0e823384653772b4bb7e59a7f3ad2605, type: 2}
-  useObjectPooling: 1
-  firePoints:
-  - {fileID: 1932820219271485222}
-  - {fileID: 2883707667540991734}
-  - {fileID: 7405726193512006931}
-  - {fileID: 4379548777946128939}
-  - {fileID: 5289196226448832069}
-  - {fileID: 8440808665832205096}
-  - {fileID: 3049931125395267496}
-  - {fileID: 2484746722128678203}
 --- !u!1 &9086439515621170334
 GameObject:
   m_ObjectHideFlags: 0

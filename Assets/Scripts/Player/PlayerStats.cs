@@ -32,7 +32,7 @@ public class PlayerStats : MonoBehaviour
     float timeSinceLastDamage;
     float regenTimer;
     SpriteRenderer playerSprite;
-    readonly List<WeaponController> suspendedWeaponControllers = new List<WeaponController>();
+    readonly List<PlayerWeaponSystem> suspendedWeaponControllers = new List<PlayerWeaponSystem>();
 
     [Header("UI")]
     [SerializeField] private HealthUIDisplay healthUIDisplay;
@@ -277,7 +277,7 @@ public class PlayerStats : MonoBehaviour
     {
         if (value)
         {
-            foreach (WeaponController weaponController in suspendedWeaponControllers)
+            foreach (PlayerWeaponSystem weaponController in suspendedWeaponControllers)
             {
                 if (weaponController != null)
                 {
@@ -290,7 +290,7 @@ public class PlayerStats : MonoBehaviour
         }
 
         suspendedWeaponControllers.Clear();
-        foreach (WeaponController weaponController in GetComponentsInChildren<WeaponController>(true))
+        foreach (PlayerWeaponSystem weaponController in GetComponentsInChildren<PlayerWeaponSystem>(true))
         {
             if (weaponController != null && weaponController.enabled)
             {

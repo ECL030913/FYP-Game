@@ -966,10 +966,9 @@ public class StageManager : MonoBehaviour
 
     private static void ClearActiveProjectiles()
     {
-        ProjectileWeaponController[] projectiles = Object.FindObjectsByType<ProjectileWeaponController>(
+        RuntimeWeaponProjectile[] runtimeProjectiles = Object.FindObjectsByType<RuntimeWeaponProjectile>(
             FindObjectsInactive.Exclude);
-
-        foreach (ProjectileWeaponController projectile in projectiles)
+        foreach (RuntimeWeaponProjectile projectile in runtimeProjectiles)
         {
             if (projectile == null)
             {
@@ -986,21 +985,20 @@ public class StageManager : MonoBehaviour
             }
         }
 
-        RuntimeWeaponProjectile[] runtimeProjectiles = Object.FindObjectsByType<RuntimeWeaponProjectile>(
-            FindObjectsInactive.Exclude);
-        foreach (RuntimeWeaponProjectile projectile in runtimeProjectiles)
-        {
-            if (projectile != null)
-            {
-                Destroy(projectile.gameObject);
-            }
-        }
-
         WeaponVisualEffect[] effects = Object.FindObjectsByType<WeaponVisualEffect>(
             FindObjectsInactive.Exclude);
         foreach (WeaponVisualEffect effect in effects)
         {
-            if (effect != null)
+            if (effect == null)
+            {
+                continue;
+            }
+
+            if (ObjectPoolManager.Instance != null)
+            {
+                ObjectPoolManager.Instance.ReleaseObject(effect.gameObject);
+            }
+            else
             {
                 Destroy(effect.gameObject);
             }

@@ -8,7 +8,17 @@ public class ObjectPoolManager : MonoBehaviour
 
     readonly Dictionary<GameObject, ObjectPool<GameObject>> pools = new();
 
+    // Parallel registry for objects that are built procedurally at runtime
+    // (no prefab asset to key off), e.g. RuntimeWeaponProjectile / WeaponVisualEffect.
+    readonly Dictionary<string, ObjectPool<GameObject>> keyedPools = new();
+
     [Header("Pool Settings")]
+    // Master switch for the performance A/B test: when false, every Get/Release
+    // call below bypasses pooling entirely and behaves like plain
+    // Instantiate()/Destroy(), across every system that routes through this
+    // manager (enemies, weapon projectiles, weapon visual effects). Toggle
+    // this instead of maintaining a second, unpooled code path to compare against.
+    public bool poolingEnabled = true;
     public int defaultCapacity = 30;
     public int maxSize = 300;
 
@@ -33,6 +43,11 @@ public class ObjectPoolManager : MonoBehaviour
 
     public GameObject GetObject(GameObject prefab, Vector3 position, Quaternion rotation)
     {
+        if (!poolingEnabled)
+        {
+            return Instantiate(prefab, position, rotation);
+        }
+
         if (!pools.ContainsKey(prefab))
         {
             CreatePool(prefab);
@@ -48,23 +63,66 @@ public class ObjectPoolManager : MonoBehaviour
         return obj;
     }
 
+    /// <summary>
+    /// Gets (or lazily creates) a pooled instance for objects that have no
+    /// source prefab, such as RuntimeWeaponProjectile / WeaponVisualEffect,
+    /// which are built with `new GameObject(...)` + AddComponent instead of
+    /// Instantiate(prefab). `createFunc` is only invoked when the pool needs
+    /// to grow; every other Get() reuses a previously-released instance.
+    /// </summary>
+    public GameObject GetPooledObject(string key, System.Func<GameObject> createFunc, Vector3 position, Quaternion rotation)
+    {
+        if (!poolingEnabled)
+        {
+            GameObject freshObj = createFunc();
+            freshObj.transform.SetPositionAndRotation(position, rotation);
+            return freshObj;
+        }
+
+        if (!keyedPools.ContainsKey(key))
+        {
+            CreateKeyedPool(key, createFunc);
+        }
+
+        GameObject obj = keyedPools[key].Get();
+
+        obj.transform.SetPositionAndRotation(position, rotation);
+
+        IPoolable poolable = obj.GetComponent<IPoolable>();
+        poolable?.OnGetFromPool();
+
+        return obj;
+    }
+
     public void ReleaseObject(GameObject obj)
     {
+        if (!poolingEnabled)
+        {
+            Destroy(obj);
+            return;
+        }
+
         PoolIdentity identity = obj.GetComponent<PoolIdentity>();
 
-        if (identity == null || identity.prefab == null)
+        if (identity == null)
         {
             Destroy(obj);
             return;
         }
 
-        if (!pools.ContainsKey(identity.prefab))
+        if (!string.IsNullOrEmpty(identity.poolKey) && keyedPools.ContainsKey(identity.poolKey))
         {
-            Destroy(obj);
+            keyedPools[identity.poolKey].Release(obj);
             return;
         }
 
-        pools[identity.prefab].Release(obj);
+        if (identity.prefab != null && pools.ContainsKey(identity.prefab))
+        {
+            pools[identity.prefab].Release(obj);
+            return;
+        }
+
+        Destroy(obj);
     }
 
     void CreatePool(GameObject prefab)
@@ -106,5 +164,46 @@ public class ObjectPoolManager : MonoBehaviour
         );
 
         pools.Add(prefab, pool);
+    }
+
+    void CreateKeyedPool(string key, System.Func<GameObject> createFunc)
+    {
+        ObjectPool<GameObject> pool = new ObjectPool<GameObject>(
+            createFunc: () =>
+            {
+                GameObject obj = createFunc();
+                obj.SetActive(false);
+
+                PoolIdentity identity = obj.GetComponent<PoolIdentity>();
+                if (identity == null)
+                {
+                    identity = obj.AddComponent<PoolIdentity>();
+                }
+
+                identity.poolKey = key;
+
+                return obj;
+            },
+            actionOnGet: obj =>
+            {
+                obj.SetActive(true);
+            },
+            actionOnRelease: obj =>
+            {
+                IPoolable poolable = obj.GetComponent<IPoolable>();
+                poolable?.OnReturnToPool();
+
+                obj.SetActive(false);
+            },
+            actionOnDestroy: obj =>
+            {
+                Destroy(obj);
+            },
+            collectionCheck: false,
+            defaultCapacity: defaultCapacity,
+            maxSize: maxSize
+        );
+
+        keyedPools.Add(key, pool);
     }
 }

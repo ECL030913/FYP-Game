@@ -12,13 +12,6 @@ public class PlayerWeaponSystem : MonoBehaviour
     private void Awake()
     {
         playerStats = GetComponent<PlayerStats>();
-
-        // The scene's original controller is preserved but disabled; the new
-        // single-slot weapon system owns automatic attacks from this point on.
-        foreach (KnifeController controller in FindObjectsByType<KnifeController>(FindObjectsInactive.Include))
-        {
-            controller.enabled = false;
-        }
     }
 
     private void Start()
