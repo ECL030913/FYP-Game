@@ -1,12 +1,14 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using UnityEngine;
 
 /// <summary>
-/// Configures an EnemySpawner for a repeatable pooling-versus-instantiation
-/// performance test. Attach this component to the PerformanceTest scene.
+/// Configures an EnemySpawner and the live PlayerWeaponSystem for a repeatable
+/// pooling-versus-no-pooling performance test. Attach this component to the
+/// PerformanceTest scene. Pooling is toggled through the single master switch
+/// on ObjectPoolManager (poolingEnabled), so this compares the real gameplay
+/// path with pooling on vs off rather than two different code paths.
 /// </summary>
 public class PerformanceTestController : MonoBehaviour
 {
@@ -19,6 +21,7 @@ public class PerformanceTestController : MonoBehaviour
     [SerializeField] private float weaponCooldownOverride = 0.1f;
 
     private EnemySpawner spawner;
+    private PlayerWeaponSystem playerWeaponSystem;
     private float elapsed;
     private bool testRunning;
     private float fpsAccumulator;
@@ -28,10 +31,6 @@ public class PerformanceTestController : MonoBehaviour
     private float avgFps;
     private float currentFps;
     private float cooldownOverrideTimer;
-
-    private static readonly FieldInfo CurrentCooldownField = typeof(WeaponController).GetField(
-        "currentCooldown",
-        BindingFlags.NonPublic | BindingFlags.Instance);
 
     private void Awake()
     {
@@ -85,8 +84,22 @@ public class PerformanceTestController : MonoBehaviour
             return;
         }
 
+        if (ObjectPoolManager.Instance != null)
+        {
+            ObjectPoolManager.Instance.poolingEnabled = usePooling;
+        }
+        else
+        {
+            Debug.LogWarning("PerformanceTest: no ObjectPoolManager in the scene — pooling toggle has no effect and every spawn falls back to Instantiate/Destroy.");
+        }
+
+        playerWeaponSystem = FindAnyObjectByType<PlayerWeaponSystem>();
+        if (playerWeaponSystem == null)
+        {
+            Debug.LogWarning("PerformanceTest: no PlayerWeaponSystem in the scene — only enemy pooling is being tested, not weapon projectile/effect pooling. Add a Player object (e.g. an instance of the GameplayCore prefab) to this scene to also exercise RuntimeWeaponProjectile/WeaponVisualEffect pooling.");
+        }
+
         int enemyCount = Mathf.Max(0, testEnemyCount);
-        spawner.useObjectPooling = usePooling;
         spawner.maxEnemiesAllowed = Mathf.Max(1, maxConcurrentEnemies);
         spawner.waveInterval = 0f;
 
@@ -112,7 +125,6 @@ public class PerformanceTestController : MonoBehaviour
         spawner.waves = new List<EnemySpawner.Wave> { wave };
         spawner.currentWaveCount = 0;
         spawner.enabled = true;
-        ApplyPoolingMode();
 
         elapsed = 0f;
         fpsAccumulator = 0f;
@@ -124,15 +136,6 @@ public class PerformanceTestController : MonoBehaviour
         cooldownOverrideTimer = 0f;
         ApplyCooldownOverride();
         testRunning = true;
-    }
-
-    private void ApplyPoolingMode()
-    {
-        KnifeController[] knifeControllers = FindObjectsByType<KnifeController>();
-        foreach (KnifeController knifeController in knifeControllers)
-        {
-            knifeController.useObjectPooling = usePooling;
-        }
     }
 
     private void Update()
@@ -174,20 +177,30 @@ public class PerformanceTestController : MonoBehaviour
             $"AvgFPS: {avgFps:F1} | MinFPS: {minFps:F1} | MaxFPS: {maxFps:F1}");
     }
 
+    /// <summary>
+    /// Forces the equipped weapon to fire roughly every weaponCooldownOverride
+    /// seconds, regardless of its own base cooldown stat, by driving the same
+    /// cooldownMultiplier the real upgrade system uses
+    /// (definition.Cooldown * cooldownMultiplier == weaponCooldownOverride).
+    /// This keeps the stress test on the exact same code path real players use
+    /// instead of reflecting into a private field.
+    /// </summary>
     private void ApplyCooldownOverride()
     {
-        if (CurrentCooldownField == null)
+        if (playerWeaponSystem == null)
         {
-            Debug.LogWarning("PerformanceTest: WeaponController cooldown field was not found.");
-            return;
+            playerWeaponSystem = FindAnyObjectByType<PlayerWeaponSystem>();
+            if (playerWeaponSystem == null)
+            {
+                return;
+            }
         }
 
-        WeaponController[] weapons = FindObjectsByType<WeaponController>();
-        float cooldown = Mathf.Max(0f, weaponCooldownOverride);
-        foreach (WeaponController weapon in weapons)
-        {
-            CurrentCooldownField.SetValue(weapon, cooldown);
-        }
+        WeaponDefinition definition = WeaponCatalog.Get(playerWeaponSystem.EquippedWeapon);
+        float baseCooldown = Mathf.Max(0.01f, definition.Cooldown);
+        float overrideCooldown = Mathf.Max(0f, weaponCooldownOverride);
+
+        RunManager.EnsureInstance().Data.cooldownMultiplier = overrideCooldown / baseCooldown;
     }
 
     private void OnGUI()

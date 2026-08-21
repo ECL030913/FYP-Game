@@ -13,6 +13,12 @@ public class ObjectPoolManager : MonoBehaviour
     readonly Dictionary<string, ObjectPool<GameObject>> keyedPools = new();
 
     [Header("Pool Settings")]
+    // Master switch for the performance A/B test: when false, every Get/Release
+    // call below bypasses pooling entirely and behaves like plain
+    // Instantiate()/Destroy(), across every system that routes through this
+    // manager (enemies, weapon projectiles, weapon visual effects). Toggle
+    // this instead of maintaining a second, unpooled code path to compare against.
+    public bool poolingEnabled = true;
     public int defaultCapacity = 30;
     public int maxSize = 300;
 
@@ -37,6 +43,11 @@ public class ObjectPoolManager : MonoBehaviour
 
     public GameObject GetObject(GameObject prefab, Vector3 position, Quaternion rotation)
     {
+        if (!poolingEnabled)
+        {
+            return Instantiate(prefab, position, rotation);
+        }
+
         if (!pools.ContainsKey(prefab))
         {
             CreatePool(prefab);
@@ -61,6 +72,13 @@ public class ObjectPoolManager : MonoBehaviour
     /// </summary>
     public GameObject GetPooledObject(string key, System.Func<GameObject> createFunc, Vector3 position, Quaternion rotation)
     {
+        if (!poolingEnabled)
+        {
+            GameObject freshObj = createFunc();
+            freshObj.transform.SetPositionAndRotation(position, rotation);
+            return freshObj;
+        }
+
         if (!keyedPools.ContainsKey(key))
         {
             CreateKeyedPool(key, createFunc);
@@ -78,6 +96,12 @@ public class ObjectPoolManager : MonoBehaviour
 
     public void ReleaseObject(GameObject obj)
     {
+        if (!poolingEnabled)
+        {
+            Destroy(obj);
+            return;
+        }
+
         PoolIdentity identity = obj.GetComponent<PoolIdentity>();
 
         if (identity == null)

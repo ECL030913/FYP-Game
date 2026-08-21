@@ -966,26 +966,6 @@ public class StageManager : MonoBehaviour
 
     private static void ClearActiveProjectiles()
     {
-        ProjectileWeaponController[] projectiles = Object.FindObjectsByType<ProjectileWeaponController>(
-            FindObjectsInactive.Exclude);
-
-        foreach (ProjectileWeaponController projectile in projectiles)
-        {
-            if (projectile == null)
-            {
-                continue;
-            }
-
-            if (ObjectPoolManager.Instance != null)
-            {
-                ObjectPoolManager.Instance.ReleaseObject(projectile.gameObject);
-            }
-            else
-            {
-                Destroy(projectile.gameObject);
-            }
-        }
-
         RuntimeWeaponProjectile[] runtimeProjectiles = Object.FindObjectsByType<RuntimeWeaponProjectile>(
             FindObjectsInactive.Exclude);
         foreach (RuntimeWeaponProjectile projectile in runtimeProjectiles)
